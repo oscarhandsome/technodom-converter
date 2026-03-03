@@ -2,6 +2,7 @@ let debounceTimer = null;
 let cachedRates = null;
 let cachedAt = 0;
 const CACHE_TTL = 60 * 60 * 1000; // 1 час (можно 24ч)
+const PRODUCT_CARD_CLASS_HINT = '[class*="ProductCard"]';
 
 function formatPrice(value) {
   return value
@@ -29,12 +30,17 @@ async function getRates() {
 }
 
 async function convertProductPagePrice() {
-  const priceBlock = document.querySelector(
-    ".ProductPricesVariantB_block__hevXI"
+  const productPriceCandidates = Array.from(
+    document.querySelectorAll('p[data-testid="product-price"]')
+  ).filter((node) => !node.closest(PRODUCT_CARD_CLASS_HINT));
+
+  const fallbackPriceEl = document.querySelector(
+    ".ProductPricesVariantB_block__hevXI p.Typography.Typography__Heading.Typography__Heading_H1"
   );
-  const priceEl = priceBlock?.querySelector(
-    "p.Typography.Typography__Heading.Typography__Heading_H1"
-  );
+  const priceEl = productPriceCandidates[0] || fallbackPriceEl;
+  const priceBlock =
+    priceEl?.closest(".ProductPricesVariantB_block__hevXI") ||
+    priceEl?.parentElement;
 
   if (!priceBlock || !priceEl) return;
 
@@ -62,9 +68,22 @@ async function convertProductPagePrice() {
 }
 
 async function convertCatalogPrices() {
-  const priceBlocks = document.querySelectorAll(
-    ".ProductCardPrices_pricesInfo__b58jF"
-  );
+  const priceBlocks = Array.from(
+    document.querySelectorAll('p[data-testid="product-price"]')
+  )
+    .map(
+      (priceEl) =>
+        priceEl.closest('[class*="ProductCardPrices_pricesInfo"]') ||
+        priceEl.parentElement
+    )
+    .filter(Boolean);
+
+  if (!priceBlocks.length) {
+    const fallbackBlocks = document.querySelectorAll(
+      ".ProductCardPrices_pricesInfo__b58jF"
+    );
+    fallbackBlocks.forEach((block) => priceBlocks.push(block));
+  }
 
   if (!priceBlocks.length) return;
 
@@ -74,7 +93,9 @@ async function convertCatalogPrices() {
   priceBlocks.forEach((block) => {
     if (block.dataset.converted) return;
 
-    const priceEl = block.querySelector('p[data-testid="product-price"]');
+    const priceEl =
+      block.querySelector('p[data-testid="product-price"]') ||
+      block.querySelector("p");
     if (!priceEl) return;
 
     const kzt = Number(priceEl.textContent.replace(/\D/g, ""));

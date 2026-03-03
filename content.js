@@ -66,14 +66,15 @@ async function convertProductPagePrice() {
   if (!priceBlock || !priceEl) return;
 
   const priceText = priceEl.textContent;
-  if (priceEl.dataset.lastPrice === priceText) return;
-  priceEl.dataset.lastPrice = priceText;
-
   const kzt = Number(priceText.replace(/\D/g, ""));
   if (!kzt) return;
 
   const rates = await getRates();
   if (!rates) return;
+
+  const conversionKey = `${priceText}|${cachedAt}`;
+  if (priceEl.dataset.lastConversionKey === conversionKey) return;
+  priceEl.dataset.lastConversionKey = conversionKey;
 
   const oldBox = priceBlock.parentElement.querySelector(".td-converter-box");
   if (oldBox) oldBox.remove();
@@ -112,8 +113,6 @@ async function convertCatalogPrices() {
   if (!rates) return;
 
   priceBlocks.forEach((block) => {
-    if (block.dataset.converted) return;
-
     const priceEl =
       block.querySelector('p[data-testid="product-price"]') ||
       block.querySelector("p");
@@ -122,15 +121,24 @@ async function convertCatalogPrices() {
     const kzt = Number(priceEl.textContent.replace(/\D/g, ""));
     if (!kzt) return;
 
-    const box = document.createElement("div");
+    const conversionKey = `${kzt}|${cachedAt}`;
+    if (block.dataset.convertedKey === conversionKey) return;
+
+    const existingBox =
+      block.nextElementSibling?.classList.contains("td-converter-box")
+        ? block.nextElementSibling
+        : null;
+    const box = existingBox || document.createElement("div");
     box.className = "td-converter-box Typography__XS Typography__XS_Regular";
     box.innerHTML = `
       💵 ${formatPrice(kzt * rates.USD)}&nbsp;USD<br>
       ₽ ${formatPrice(kzt * rates.RUB)}&nbsp;RUB
     `;
 
-    block.after(box);
-    block.dataset.converted = "1";
+    if (!box.isConnected) {
+      block.after(box);
+    }
+    block.dataset.convertedKey = conversionKey;
   });
 }
 

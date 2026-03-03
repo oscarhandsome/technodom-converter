@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Technodom Price Converter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Конвертирует цены на technodom.kz из тенге в USD и RUB по актуальному курсу.",
   "permissions": [],
   "host_permissions": ["https://open.er-api.com/*", "*://www.technodom.kz/*"],

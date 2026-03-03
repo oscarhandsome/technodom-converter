@@ -4,6 +4,8 @@ let cachedAt = 0;
 const CACHE_TTL = 60 * 60 * 1000; // 1 час (можно 24ч)
 const PRODUCT_CARD_CLASS_HINT = '[class*="ProductCard"]';
 const FETCH_TIMEOUT_MS = 7000;
+const PRICE_NODE_SELECTOR =
+  'p[data-testid="product-price"], .ProductCardPrices_pricesInfo__b58jF, .ProductPricesVariantB_block__hevXI';
 
 function formatPrice(value) {
   return value
@@ -132,19 +134,36 @@ async function convertCatalogPrices() {
   });
 }
 
-const observer = new MutationObserver(() => {
+function scheduleConversion() {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     convertProductPagePrice();
     convertCatalogPrices();
   }, 300);
+}
+
+function mutationContainsPriceNode(mutation) {
+  if (!mutation.addedNodes?.length) return false;
+
+  return Array.from(mutation.addedNodes).some((node) => {
+    if (!(node instanceof Element)) return false;
+    return (
+      node.matches(PRICE_NODE_SELECTOR) ||
+      Boolean(node.querySelector(PRICE_NODE_SELECTOR))
+    );
+  });
+}
+
+const observer = new MutationObserver((mutations) => {
+  if (!mutations.some(mutationContainsPriceNode)) return;
+  scheduleConversion();
 });
 
-observer.observe(document.body, {
+const observeTarget = document.querySelector("main") || document.body;
+observer.observe(observeTarget, {
   childList: true,
   subtree: true,
 });
 
 // первый запуск
-convertProductPagePrice();
-convertCatalogPrices();
+scheduleConversion();

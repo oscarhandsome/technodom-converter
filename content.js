@@ -3,6 +3,7 @@ let cachedRates = null;
 let cachedAt = 0;
 const CACHE_TTL = 60 * 60 * 1000; // 1 час (можно 24ч)
 const PRODUCT_CARD_CLASS_HINT = '[class*="ProductCard"]';
+const FETCH_TIMEOUT_MS = 7000;
 
 function formatPrice(value) {
   return value
@@ -20,13 +21,31 @@ async function getRates() {
     return cachedRates;
   }
 
-  const r = await fetch("https://open.er-api.com/v6/latest/KZT");
-  const data = await r.json();
-  if (data.result !== "success") return null;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-  cachedRates = data.rates;
-  cachedAt = now;
-  return cachedRates;
+  try {
+    const r = await fetch("https://open.er-api.com/v6/latest/KZT", {
+      signal: controller.signal,
+    });
+    const data = await r.json();
+
+    const usd = data?.rates?.USD;
+    const rub = data?.rates?.RUB;
+    const isValid = data?.result === "success" && Number(usd) && Number(rub);
+
+    if (!isValid) {
+      return cachedRates;
+    }
+
+    cachedRates = data.rates;
+    cachedAt = now;
+    return cachedRates;
+  } catch (_err) {
+    return cachedRates;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function convertProductPagePrice() {

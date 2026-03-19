@@ -1,11 +1,15 @@
 let debounceTimer = null;
 let cachedRates = null;
 let cachedAt = 0;
+let observer = null;
+let observedRoot = null;
+let reattachObserverTimer = null;
 const CACHE_TTL = 60 * 60 * 1000; // 1 час (можно 24ч)
 const PRODUCT_CARD_CLASS_HINT = '[class*="ProductCard"]';
 const FETCH_TIMEOUT_MS = 7000;
 const PRICE_NODE_SELECTOR =
   'p[data-testid="product-price"], .ProductCardPrices_pricesInfo__b58jF, .ProductPricesVariantB_block__hevXI';
+const OBSERVER_REATTACH_DELAY_MS = 1000;
 
 function formatPrice(value) {
   return value
@@ -151,6 +155,10 @@ function scheduleConversion() {
 }
 
 function mutationContainsPriceNode(mutation) {
+  if (mutation.type === "characterData") {
+    return mutation.target?.parentElement?.matches?.(PRICE_NODE_SELECTOR) ?? false;
+  }
+
   if (!mutation.addedNodes?.length) return false;
 
   return Array.from(mutation.addedNodes).some((node) => {
@@ -162,16 +170,64 @@ function mutationContainsPriceNode(mutation) {
   });
 }
 
-const observer = new MutationObserver((mutations) => {
-  if (!mutations.some(mutationContainsPriceNode)) return;
+function scheduleObserverReattach() {
+  clearTimeout(reattachObserverTimer);
+  reattachObserverTimer = setTimeout(() => {
+    ensureObserver();
+    scheduleConversion();
+  }, OBSERVER_REATTACH_DELAY_MS);
+}
+
+function ensureObserver() {
+  const nextRoot = document.querySelector("main") || document.body || document.documentElement;
+  if (!nextRoot) return;
+
+  if (observer && observedRoot === nextRoot) {
+    return;
+  }
+
+  if (!observer) {
+    observer = new MutationObserver((mutations) => {
+      if (!mutations.some(mutationContainsPriceNode)) return;
+      scheduleConversion();
+    });
+  } else {
+    observer.disconnect();
+  }
+
+  observer.observe(nextRoot, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  });
+  observedRoot = nextRoot;
+}
+
+function installNavigationHooks() {
+  const historyMethods = ["pushState", "replaceState"];
+
+  historyMethods.forEach((method) => {
+    const original = window.history[method];
+    if (typeof original !== "function") return;
+
+    window.history[method] = function historyWrapper(...args) {
+      const result = original.apply(this, args);
+      scheduleObserverReattach();
+      return result;
+    };
+  });
+
+  window.addEventListener("popstate", scheduleObserverReattach);
+  window.addEventListener("load", scheduleObserverReattach);
+}
+
+function init() {
+  ensureObserver();
+  installNavigationHooks();
+
   scheduleConversion();
-});
+  setTimeout(scheduleConversion, 1000);
+  setTimeout(scheduleConversion, 2500);
+}
 
-const observeTarget = document.querySelector("main") || document.body;
-observer.observe(observeTarget, {
-  childList: true,
-  subtree: true,
-});
-
-// первый запуск
-scheduleConversion();
+init();

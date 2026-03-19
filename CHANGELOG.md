@@ -6,9 +6,14 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Added conversion support for alternative `.product__price-container` / `.product__current-price` markup on both product pages and repeated catalog cards.
+
+## [1.0.2] - 2026-03-19
+
+### Fixed
+
 - Restored price conversion on initial page open by reattaching DOM observation after page hydration and in-site navigation.
 - Added support for both `technodom.kz` and `www.technodom.kz` URLs in the extension match patterns.
-- Added conversion support for alternative `.product__price-container` / `.product__current-price` markup on both product pages and repeated catalog cards.
 
 ## [1.0.1] - 2026-03-03
 

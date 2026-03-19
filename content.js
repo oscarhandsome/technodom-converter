@@ -4,12 +4,17 @@ let cachedAt = 0;
 let observer = null;
 let observedRoot = null;
 let reattachObserverTimer = null;
+let lastKnownUrl = window.location.href;
+let navigationBurstTimerIds = [];
+let urlPollTimer = null;
 const CACHE_TTL = 60 * 60 * 1000; // 1 час (можно 24ч)
 const PRODUCT_CARD_CLASS_HINT = '[class*="ProductCard"]';
 const FETCH_TIMEOUT_MS = 7000;
 const PRICE_NODE_SELECTOR =
   'p[data-testid="product-price"], .ProductCardPrices_pricesInfo__b58jF, .ProductPricesVariantB_block__hevXI';
 const OBSERVER_REATTACH_DELAY_MS = 1000;
+const NAVIGATION_BURST_DELAYS_MS = [0, 400, 1200, 2500, 4000];
+const URL_POLL_INTERVAL_MS = 500;
 
 function formatPrice(value) {
   return value
@@ -170,6 +175,30 @@ function mutationContainsPriceNode(mutation) {
   });
 }
 
+function clearNavigationBurst() {
+  navigationBurstTimerIds.forEach((timerId) => clearTimeout(timerId));
+  navigationBurstTimerIds = [];
+}
+
+function scheduleNavigationBurst() {
+  clearNavigationBurst();
+  navigationBurstTimerIds = NAVIGATION_BURST_DELAYS_MS.map((delay) =>
+    setTimeout(() => {
+      ensureObserver();
+      scheduleConversion();
+    }, delay)
+  );
+}
+
+function handleUrlChange() {
+  const nextUrl = window.location.href;
+  if (nextUrl === lastKnownUrl) return;
+
+  lastKnownUrl = nextUrl;
+  scheduleObserverReattach();
+  scheduleNavigationBurst();
+}
+
 function scheduleObserverReattach() {
   clearTimeout(reattachObserverTimer);
   reattachObserverTimer = setTimeout(() => {
@@ -179,7 +208,7 @@ function scheduleObserverReattach() {
 }
 
 function ensureObserver() {
-  const nextRoot = document.querySelector("main") || document.body || document.documentElement;
+  const nextRoot = document.documentElement;
   if (!nextRoot) return;
 
   if (observer && observedRoot === nextRoot) {
@@ -188,7 +217,14 @@ function ensureObserver() {
 
   if (!observer) {
     observer = new MutationObserver((mutations) => {
-      if (!mutations.some(mutationContainsPriceNode)) return;
+      handleUrlChange();
+
+      const hasRelevantMutation = mutations.some((mutation) => {
+        if (mutationContainsPriceNode(mutation)) return true;
+        return mutation.type === "childList" || mutation.type === "characterData";
+      });
+
+      if (!hasRelevantMutation) return;
       scheduleConversion();
     });
   } else {
@@ -204,30 +240,20 @@ function ensureObserver() {
 }
 
 function installNavigationHooks() {
-  const historyMethods = ["pushState", "replaceState"];
+  window.addEventListener("popstate", handleUrlChange);
+  window.addEventListener("hashchange", handleUrlChange);
+  window.addEventListener("load", scheduleNavigationBurst);
 
-  historyMethods.forEach((method) => {
-    const original = window.history[method];
-    if (typeof original !== "function") return;
-
-    window.history[method] = function historyWrapper(...args) {
-      const result = original.apply(this, args);
-      scheduleObserverReattach();
-      return result;
-    };
-  });
-
-  window.addEventListener("popstate", scheduleObserverReattach);
-  window.addEventListener("load", scheduleObserverReattach);
+  if (!urlPollTimer) {
+    urlPollTimer = setInterval(handleUrlChange, URL_POLL_INTERVAL_MS);
+  }
 }
 
 function init() {
   ensureObserver();
   installNavigationHooks();
 
-  scheduleConversion();
-  setTimeout(scheduleConversion, 1000);
-  setTimeout(scheduleConversion, 2500);
+  scheduleNavigationBurst();
 }
 
 init();

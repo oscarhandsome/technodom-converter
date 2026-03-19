@@ -11,10 +11,60 @@ const CACHE_TTL = 60 * 60 * 1000; // 1 час (можно 24ч)
 const PRODUCT_CARD_CLASS_HINT = '[class*="ProductCard"]';
 const FETCH_TIMEOUT_MS = 7000;
 const PRICE_NODE_SELECTOR =
-  'p[data-testid="product-price"], .ProductCardPrices_pricesInfo__b58jF, .ProductPricesVariantB_block__hevXI';
+  'p[data-testid="product-price"], .ProductCardPrices_pricesInfo__b58jF, .ProductPricesVariantB_block__hevXI, .product__price-container, .product__current-price';
 const OBSERVER_REATTACH_DELAY_MS = 1000;
 const NAVIGATION_BURST_DELAYS_MS = [0, 400, 1200, 2500, 4000];
 const URL_POLL_INTERVAL_MS = 500;
+const ALTERNATIVE_CARD_CONTAINER_SELECTOR = ".product__price-container";
+const ALTERNATIVE_CARD_PRICE_SELECTOR = ".product__current-price";
+
+function parseKztPrice(priceText) {
+  return Number(priceText.replace(/\D/g, ""));
+}
+
+function getProductPagePriceTarget() {
+  const productPriceCandidates = Array.from(
+    document.querySelectorAll('p[data-testid="product-price"]')
+  ).filter((node) => !node.closest(PRODUCT_CARD_CLASS_HINT));
+
+  if (productPriceCandidates[0]) {
+    const priceEl = productPriceCandidates[0];
+    return {
+      priceEl,
+      priceBlock:
+        priceEl.closest(".ProductPricesVariantB_block__hevXI") ||
+        priceEl.parentElement,
+    };
+  }
+
+  const alternativePriceEl = Array.from(
+    document.querySelectorAll(
+      `${ALTERNATIVE_CARD_CONTAINER_SELECTOR} ${ALTERNATIVE_CARD_PRICE_SELECTOR}`
+    )
+  ).find((node) => {
+    const container = node.closest(ALTERNATIVE_CARD_CONTAINER_SELECTOR);
+    return !container?.closest(PRODUCT_CARD_CLASS_HINT);
+  });
+  if (alternativePriceEl) {
+    return {
+      priceEl: alternativePriceEl,
+      priceBlock:
+        alternativePriceEl.closest(".product__price-container") ||
+        alternativePriceEl.parentElement,
+    };
+  }
+
+  const fallbackPriceEl = document.querySelector(
+    ".ProductPricesVariantB_block__hevXI p.Typography.Typography__Heading.Typography__Heading_H1"
+  );
+
+  return {
+    priceEl: fallbackPriceEl,
+    priceBlock:
+      fallbackPriceEl?.closest(".ProductPricesVariantB_block__hevXI") ||
+      fallbackPriceEl?.parentElement,
+  };
+}
 
 function formatPrice(value) {
   return value
@@ -60,22 +110,12 @@ async function getRates() {
 }
 
 async function convertProductPagePrice() {
-  const productPriceCandidates = Array.from(
-    document.querySelectorAll('p[data-testid="product-price"]')
-  ).filter((node) => !node.closest(PRODUCT_CARD_CLASS_HINT));
-
-  const fallbackPriceEl = document.querySelector(
-    ".ProductPricesVariantB_block__hevXI p.Typography.Typography__Heading.Typography__Heading_H1"
-  );
-  const priceEl = productPriceCandidates[0] || fallbackPriceEl;
-  const priceBlock =
-    priceEl?.closest(".ProductPricesVariantB_block__hevXI") ||
-    priceEl?.parentElement;
+  const { priceEl, priceBlock } = getProductPagePriceTarget();
 
   if (!priceBlock || !priceEl) return;
 
   const priceText = priceEl.textContent;
-  const kzt = Number(priceText.replace(/\D/g, ""));
+  const kzt = parseKztPrice(priceText);
   if (!kzt) return;
 
   const rates = await getRates();
@@ -109,6 +149,14 @@ async function convertCatalogPrices() {
     )
     .filter(Boolean);
 
+  Array.from(document.querySelectorAll(ALTERNATIVE_CARD_CONTAINER_SELECTOR))
+    .filter((block) => block.querySelector(ALTERNATIVE_CARD_PRICE_SELECTOR))
+    .forEach((block) => {
+      if (!priceBlocks.includes(block)) {
+        priceBlocks.push(block);
+      }
+    });
+
   if (!priceBlocks.length) {
     const fallbackBlocks = document.querySelectorAll(
       ".ProductCardPrices_pricesInfo__b58jF"
@@ -124,10 +172,11 @@ async function convertCatalogPrices() {
   priceBlocks.forEach((block) => {
     const priceEl =
       block.querySelector('p[data-testid="product-price"]') ||
+      block.querySelector(ALTERNATIVE_CARD_PRICE_SELECTOR) ||
       block.querySelector("p");
     if (!priceEl) return;
 
-    const kzt = Number(priceEl.textContent.replace(/\D/g, ""));
+    const kzt = parseKztPrice(priceEl.textContent);
     if (!kzt) return;
 
     const conversionKey = `${kzt}|${cachedAt}`;

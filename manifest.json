@@ -1,17 +1,40 @@
 {
   "manifest_version": 3,
   "name": "Technodom Price Converter",
-  "version": "1.0.3",
-  "description": "Конвертирует цены на technodom.kz из тенге в USD и RUB по актуальному курсу.",
-  "permissions": [],
+  "version": "1.0.4",
+  "description": "Добавляет конвертацию цен и список сравнения для technodom.kz, shop.kz, sulpak.kz, ispace.kz и itmag.kz.",
+  "permissions": ["storage", "activeTab"],
   "host_permissions": [
     "https://open.er-api.com/*",
     "*://www.technodom.kz/*",
-    "*://technodom.kz/*"
+    "*://technodom.kz/*",
+    "*://shop.kz/*",
+    "*://www.shop.kz/*",
+    "*://sulpak.kz/*",
+    "*://www.sulpak.kz/*",
+    "*://ispace.kz/*",
+    "*://www.ispace.kz/*",
+    "*://itmag.kz/*",
+    "*://www.itmag.kz/*"
   ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Technodom Price Converter"
+  },
   "content_scripts": [
     {
-      "matches": ["*://www.technodom.kz/*", "*://technodom.kz/*"],
+      "matches": [
+        "*://www.technodom.kz/*",
+        "*://technodom.kz/*",
+        "*://shop.kz/*",
+        "*://www.shop.kz/*",
+        "*://sulpak.kz/*",
+        "*://www.sulpak.kz/*",
+        "*://ispace.kz/*",
+        "*://www.ispace.kz/*",
+        "*://itmag.kz/*",
+        "*://www.itmag.kz/*"
+      ],
       "js": ["content.js"],
       "css": ["styles.css"],
       "run_at": "document_idle"

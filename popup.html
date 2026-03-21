@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Technodom Price Converter</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup">
+      <div class="popup__header">
+        <p class="popup__eyebrow">Technodom Converter</p>
+        <h1 class="popup__title">Меню расширения</h1>
+      </div>
+
+      <label class="toggle-card" for="enabled-toggle">
+        <div>
+          <p class="toggle-card__title">Конвертация цен</p>
+          <p class="toggle-card__hint">Показывать USD и RUB на страницах Technodom</p>
+        </div>
+        <input id="enabled-toggle" type="checkbox">
+      </label>
+
+      <button id="refresh-button" class="popup__button" type="button">
+        Обновить цены на вкладке
+      </button>
+
+      <p id="status" class="popup__status" aria-live="polite"></p>
+
+      <section class="saved-products">
+        <div class="saved-products__header">
+          <h2 class="saved-products__title">Список сравнения</h2>
+          <button id="clear-saved-button" class="saved-products__clear" type="button">
+            Очистить
+          </button>
+        </div>
+        <div id="saved-products-list" class="saved-products__list"></div>
+      </section>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+  </html>

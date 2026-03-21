@@ -38,6 +38,7 @@ All notable changes to this project are documented in this file.
 - Ensured popup comparisons remain internally consistent even when saved items were added under different exchange-rate snapshots.
 - Fixed KZT parsing for stores that show decimal-formatted prices such as `628 253,00`, preventing inflated saved values on `itmag.kz`.
 - Enabled smart matching to actively choose the closest previously saved product as the popup comparison base instead of only storing matching metadata for future use.
+- Stopped Technodom comparison blocks from briefly reappearing after disabling conversion in popup by cancelling pending timers and disconnecting DOM observation immediately.
 
 ## [1.0.3] - 2026-03-19
 

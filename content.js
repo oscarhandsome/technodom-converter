@@ -664,9 +664,12 @@ function clearNavigationBurst() {
 }
 
 function scheduleNavigationBurst() {
+  if (!converterEnabled) return;
+
   clearNavigationBurst();
   navigationBurstTimerIds = NAVIGATION_BURST_DELAYS_MS.map((delay) =>
     setTimeout(() => {
+      if (!converterEnabled) return;
       ensureObserver();
       scheduleConversion();
     }, delay)
@@ -678,13 +681,18 @@ function handleUrlChange() {
   if (nextUrl === lastKnownUrl) return;
 
   lastKnownUrl = nextUrl;
+  if (!converterEnabled) return;
+
   scheduleObserverReattach();
   scheduleNavigationBurst();
 }
 
 function scheduleObserverReattach() {
+  if (!converterEnabled) return;
+
   clearTimeout(reattachObserverTimer);
   reattachObserverTimer = setTimeout(() => {
+    if (!converterEnabled) return;
     ensureObserver();
     scheduleConversion();
   }, OBSERVER_REATTACH_DELAY_MS);
@@ -693,6 +701,12 @@ function scheduleObserverReattach() {
 function ensureObserver() {
   const nextRoot = document.documentElement;
   if (!nextRoot) return;
+
+  if (!converterEnabled) {
+    observer?.disconnect();
+    observedRoot = null;
+    return;
+  }
 
   if (observer && observedRoot === nextRoot) return;
 
@@ -734,10 +748,16 @@ function setConverterEnabled(nextEnabled) {
   converterEnabled = Boolean(nextEnabled);
 
   if (!converterEnabled) {
+    clearTimeout(debounceTimer);
+    clearTimeout(reattachObserverTimer);
+    clearNavigationBurst();
+    observer?.disconnect();
+    observedRoot = null;
     removeConvertedPrices();
     return;
   }
 
+  ensureObserver();
   scheduleNavigationBurst();
 }
 

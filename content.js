@@ -8,14 +8,23 @@ let lastKnownUrl = window.location.href;
 let navigationBurstTimerIds = [];
 let urlPollTimer = null;
 let converterEnabled = true;
+let technodomProductPageLateRenderTimer = null;
 
 const CACHE_TTL = 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 7000;
 const OBSERVER_REATTACH_DELAY_MS = 1000;
 const NAVIGATION_BURST_DELAYS_MS = [0, 400, 1200, 2500, 4000];
 const URL_POLL_INTERVAL_MS = 500;
+const TECHNODOM_PRODUCT_PAGE_LATE_RENDER_MS = 4500;
+const BOX_RENDER_VERSION = "2";
+const BOX_CLASS = "td-converter-box-v2";
+const LEGACY_BOX_CLASS = "td-converter-box";
+const ANY_BOX_SELECTOR = `.${BOX_CLASS}, .${LEGACY_BOX_CLASS}`;
+const INSTANCE_ID = `td-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const SAVED_PRODUCTS_KEY = "savedProducts";
 const PRODUCT_CARD_CLASS_HINT = '[class*="ProductCard"]';
+const TECHNODOM_CATALOG_CARD_SELECTOR =
+  ".products__item, article.product, .category-product, .product-list__item";
 const ALTERNATIVE_CARD_CONTAINER_SELECTOR = ".product__price-container";
 const ALTERNATIVE_CARD_PRICE_SELECTOR = ".product__current-price";
 const TECHNODOM_HOST_RE = /(^|\.)technodom\.kz$/i;
@@ -45,10 +54,10 @@ const TECHNODOM_CARD_TITLE_SELECTORS = [
   '[class*="ProductCard"] a[title]',
   '[class*="ProductCard"] h2',
   '[class*="ProductCard"] h3',
-  'a[title]',
   "h2",
   "h3",
   "h4",
+  "a[title]",
 ];
 const SHOP_PRODUCT_TITLE_SELECTORS = [
   "#pagetitle",
@@ -63,24 +72,48 @@ const SULPAK_PRODUCT_TITLE_SELECTORS = [
   "h1.title__xmedium",
   'meta[property="og:title"]',
 ];
-const SULPAK_PRODUCT_PRICE_SELECTORS = [
-  ".product__price",
-];
+const SULPAK_PRODUCT_PRICE_SELECTORS = [".product__price"];
 const ISPACE_PRODUCT_TITLE_SELECTORS = [
   "h1.product-page_name",
   'meta[property="og:title"]',
 ];
-const ISPACE_PRODUCT_PRICE_SELECTORS = [
-  ".product-price_price-value",
-];
+const ISPACE_PRODUCT_PRICE_SELECTORS = [".product-price_price-value"];
 const ITMAG_PRODUCT_TITLE_SELECTORS = [
   "h1.title_section",
   'meta[property="og:title"]',
 ];
-const ITMAG_PRODUCT_PRICE_SELECTORS = [
-  ".price",
-  '[id$="_price"]',
-];
+const ITMAG_PRODUCT_PRICE_SELECTORS = [".price", '[id$="_price"]'];
+
+function ensureConverterVisibilityStyle() {
+  const styleId = "td-converter-visibility-style";
+  let styleEl = document.getElementById(styleId);
+
+  if (!styleEl) {
+    styleEl = document.createElement("style");
+    styleEl.id = styleId;
+    document.documentElement.append(styleEl);
+  }
+
+  styleEl.textContent = `
+    html[data-td-converter-enabled="false"] ${ANY_BOX_SELECTOR} {
+      display: none !important;
+    }
+
+    .${LEGACY_BOX_CLASS} {
+      display: none !important;
+    }
+
+    .${BOX_CLASS}:not([data-render-version="${BOX_RENDER_VERSION}"]) {
+      display: none !important;
+    }
+  `;
+}
+
+function syncConverterVisibility() {
+  document.documentElement.dataset.tdConverterEnabled = converterEnabled
+    ? "true"
+    : "false";
+}
 
 function isTechnodom() {
   return TECHNODOM_HOST_RE.test(window.location.hostname);
@@ -142,6 +175,28 @@ function normalizeTitle(title) {
   return sanitizeText(title).toLocaleLowerCase("ru-RU");
 }
 
+function normalizeColor(title) {
+  const normalized = normalizeTitle(title);
+  const colorMap = [
+    ["starlight", "starlight"],
+    ["серый космос", "spacegray"],
+    ["space gray", "spacegray"],
+    ["spacegrey", "spacegray"],
+    ["midnight", "midnight"],
+    ["темная ночь", "midnight"],
+    ["тёмная ночь", "midnight"],
+    ["sky blue", "skyblue"],
+    ["небесно-голубой", "skyblue"],
+    ["silver", "silver"],
+  ];
+
+  for (const [needle, value] of colorMap) {
+    if (normalized.includes(needle)) return value;
+  }
+
+  return "";
+}
+
 function buildComparisonKey(title) {
   const normalized = normalizeTitle(title)
     .replace(/[\(\)\[\],.:;|/\\]+/g, " ")
@@ -157,6 +212,38 @@ function buildComparisonKey(title) {
   }
 
   return normalized;
+}
+
+function extractMatch(title, regex) {
+  return normalizeTitle(title).match(regex)?.[1] || "";
+}
+
+function buildMatchProfile(title) {
+  const normalized = normalizeTitle(title);
+  const skuMatches = Array.from(
+    new Set(
+      (normalized.match(/[a-z]{1,5}\d[a-z0-9/-]{2,}/gi) || []).map((value) =>
+        value.replace(/\//g, "")
+      )
+    )
+  );
+
+  const modelMatches = Array.from(
+    new Set(normalized.match(/\ba\d{4}\b/gi) || [])
+  );
+
+  return {
+    family: normalized.includes("macbook air") ? "macbook air" : "",
+    chip: extractMatch(normalized, /\b(m1|m2|m3|m4)\b/i),
+    ram: extractMatch(normalized, /\b(8|16|24|32|36)\s*(?:gb|гб)\b/i),
+    storage: extractMatch(normalized, /\b(128|256|512|1024|1)\s*(?:ssd|gb|гб|tb|тб)\b/i),
+    size:
+      extractMatch(normalized, /\b(13(?:[.,]\d)?|15(?:[.,]\d)?)[" ]/i) ||
+      extractMatch(normalized, /\b(13(?:[.,]\d)?|15(?:[.,]\d)?)\b/i),
+    color: normalizeColor(normalized),
+    skuMatches,
+    modelMatches,
+  };
 }
 
 function getTextFromSelectors(root, selectors) {
@@ -175,8 +262,40 @@ function getTextFromSelectors(root, selectors) {
   return "";
 }
 
+function cleanupConvertedPrices() {
+  document.querySelectorAll(ANY_BOX_SELECTOR).forEach((node) => node.remove());
+  document
+    .querySelectorAll("[data-converted-key], [data-last-conversion-key]")
+    .forEach((node) => {
+      delete node.dataset.convertedKey;
+      delete node.dataset.lastConversionKey;
+    });
+}
+
+function isExpectedConverterBox(box) {
+  if (!box?.classList?.contains(BOX_CLASS)) return false;
+
+  return (
+    box.dataset.renderVersion === BOX_RENDER_VERSION &&
+    box.dataset.ownerId === INSTANCE_ID &&
+    Boolean(box.querySelector(".td-converter-box__label")) &&
+    Boolean(box.querySelector(".td-save-product-button")) &&
+    Boolean(box.querySelector(".td-converter-box__status"))
+  );
+}
+
+function cleanupUnexpectedConverterBoxes(scope = document) {
+  const root = scope instanceof Element || scope instanceof Document ? scope : document;
+  root.querySelectorAll(ANY_BOX_SELECTOR).forEach((box) => {
+    if (!isExpectedConverterBox(box)) {
+      box.remove();
+    }
+  });
+}
+
 function findCardContainer(node) {
   return (
+    node.closest(TECHNODOM_CATALOG_CARD_SELECTOR) ||
     node.closest('[class*="ProductCard"]') ||
     node.closest("article") ||
     node.closest("li") ||
@@ -184,18 +303,70 @@ function findCardContainer(node) {
   );
 }
 
+function getSavedProducts() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get({ [SAVED_PRODUCTS_KEY]: [] }, (result) => {
+      resolve(Array.isArray(result[SAVED_PRODUCTS_KEY]) ? result[SAVED_PRODUCTS_KEY] : []);
+    });
+  });
+}
+
+function setSavedProducts(items) {
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ [SAVED_PRODUCTS_KEY]: items }, resolve);
+  });
+}
+
+async function saveProductForComparison(product) {
+  const cleanTitle = sanitizeText(product.title) || "Товар без названия";
+  const items = await getSavedProducts();
+  const nextItem = {
+    id: product.id,
+    title: cleanTitle,
+    titleKey: normalizeTitle(cleanTitle),
+    compareKey: buildComparisonKey(cleanTitle),
+    profile: buildMatchProfile(cleanTitle),
+    store: getStoreName(),
+    productUrl: product.productUrl,
+    prices: product.prices,
+    savedAt: new Date().toISOString(),
+  };
+
+  const existingIndex = items.findIndex(
+    (item) => item.store === nextItem.store && item.productUrl === nextItem.productUrl
+  );
+
+  if (existingIndex >= 0) {
+    items[existingIndex] = nextItem;
+  } else {
+    items.push(nextItem);
+  }
+
+  await setSavedProducts(items);
+}
+
+function isInsideTechnodomCatalogCard(node) {
+  return Boolean(node?.closest?.(TECHNODOM_CATALOG_CARD_SELECTOR));
+}
+
 function getTechnodomProductPageTarget() {
   const productPriceCandidates = Array.from(
     document.querySelectorAll('p[data-testid="product-price"]')
-  ).filter((node) => !node.closest(PRODUCT_CARD_CLASS_HINT));
+  ).filter(
+    (node) =>
+      !node.closest(PRODUCT_CARD_CLASS_HINT) &&
+      !isInsideTechnodomCatalogCard(node)
+  );
 
   if (productPriceCandidates[0]) {
     const priceEl = productPriceCandidates[0];
+    const priceBlock =
+      priceEl.closest(".ProductPricesVariantB_block__hevXI") ||
+      priceEl.parentElement;
     return {
       priceEl,
-      priceBlock:
-        priceEl.closest(".ProductPricesVariantB_block__hevXI") ||
-        priceEl.parentElement,
+      priceBlock,
+      renderAnchor: priceBlock,
     };
   }
 
@@ -205,15 +376,20 @@ function getTechnodomProductPageTarget() {
     )
   ).find((node) => {
     const container = node.closest(ALTERNATIVE_CARD_CONTAINER_SELECTOR);
-    return !container?.closest(PRODUCT_CARD_CLASS_HINT);
+    return (
+      !container?.closest(PRODUCT_CARD_CLASS_HINT) &&
+      !isInsideTechnodomCatalogCard(container)
+    );
   });
 
   if (alternativePriceEl) {
+    const priceBlock =
+      alternativePriceEl.closest(ALTERNATIVE_CARD_CONTAINER_SELECTOR) ||
+      alternativePriceEl.parentElement;
     return {
       priceEl: alternativePriceEl,
-      priceBlock:
-        alternativePriceEl.closest(ALTERNATIVE_CARD_CONTAINER_SELECTOR) ||
-        alternativePriceEl.parentElement,
+      priceBlock,
+      renderAnchor: priceBlock,
     };
   }
 
@@ -221,36 +397,30 @@ function getTechnodomProductPageTarget() {
     ".ProductPricesVariantB_block__hevXI p.Typography.Typography__Heading.Typography__Heading_H1"
   );
 
+  const priceBlock =
+    fallbackPriceEl?.closest(".ProductPricesVariantB_block__hevXI") ||
+    fallbackPriceEl?.parentElement;
+
   return {
     priceEl: fallbackPriceEl,
-    priceBlock:
-      fallbackPriceEl?.closest(".ProductPricesVariantB_block__hevXI") ||
-      fallbackPriceEl?.parentElement,
-  };
-}
-
-function getShopProductPageTarget() {
-  const priceEl = SHOP_PRODUCT_PRICE_SELECTORS.map((selector) =>
-    document.querySelector(selector)
-  ).find(Boolean);
-
-  return {
-    priceEl,
-    priceBlock: priceEl?.parentElement || priceEl,
+    priceBlock,
+    renderAnchor: priceBlock,
   };
 }
 
 function getSimpleProductPageTarget(selectors) {
   const priceEl = selectors.map((selector) => document.querySelector(selector)).find(Boolean);
+  const priceBlock = priceEl?.parentElement || priceEl;
 
   return {
     priceEl,
-    priceBlock: priceEl?.parentElement || priceEl,
+    priceBlock,
+    renderAnchor: priceBlock,
   };
 }
 
 function getProductPageTarget() {
-  if (isShopKz()) return getShopProductPageTarget();
+  if (isShopKz()) return getSimpleProductPageTarget(SHOP_PRODUCT_PRICE_SELECTORS);
   if (isSulpak()) return getSimpleProductPageTarget(SULPAK_PRODUCT_PRICE_SELECTORS);
   if (isISpace()) return getSimpleProductPageTarget(ISPACE_PRODUCT_PRICE_SELECTORS);
   if (isItmag()) return getSimpleProductPageTarget(ITMAG_PRODUCT_PRICE_SELECTORS);
@@ -312,10 +482,10 @@ function getCatalogProductTitle(priceBlock) {
   return linkedTitle || "Товар без названия";
 }
 
-function getProductUrl(rootNode) {
-  if (isShopKz() || isSulpak() || isISpace() || isItmag()) return window.location.href;
+function getProductUrl(sourceNode) {
+  if (!isTechnodom()) return window.location.href;
 
-  const card = findCardContainer(rootNode);
+  const card = findCardContainer(sourceNode);
   const link =
     card?.querySelector("a[href]") ||
     document.querySelector('link[rel="canonical"]');
@@ -328,59 +498,9 @@ function getProductUrl(rootNode) {
   }
 }
 
-function getSavedProducts() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get({ [SAVED_PRODUCTS_KEY]: [] }, (result) => {
-      resolve(Array.isArray(result[SAVED_PRODUCTS_KEY]) ? result[SAVED_PRODUCTS_KEY] : []);
-    });
-  });
-}
-
-function setSavedProducts(items) {
-  return new Promise((resolve) => {
-    chrome.storage.local.set({ [SAVED_PRODUCTS_KEY]: items }, resolve);
-  });
-}
-
-async function saveProductForComparison(product) {
-  const items = await getSavedProducts();
-  const safeTitle = sanitizeText(product.title) || "Товар без названия";
-  const nextItem = {
-    id: product.id,
-    title: safeTitle,
-    titleKey: normalizeTitle(safeTitle),
-    compareKey: buildComparisonKey(safeTitle),
-    store: getStoreName(),
-    productUrl: product.productUrl,
-    prices: product.prices,
-    savedAt: new Date().toISOString(),
-  };
-
-  const existingIndex = items.findIndex(
-    (item) => item.store === nextItem.store && item.productUrl === nextItem.productUrl
-  );
-
-  if (existingIndex >= 0) {
-    items[existingIndex] = nextItem;
-  } else {
-    items.push(nextItem);
-  }
-
-  await setSavedProducts(items);
-}
-
-function removeConvertedPrices() {
-  document.querySelectorAll(".td-converter-box").forEach((node) => node.remove());
-  document
-    .querySelectorAll("[data-converted-key], [data-last-conversion-key]")
-    .forEach((node) => {
-      delete node.dataset.convertedKey;
-      delete node.dataset.lastConversionKey;
-    });
-}
-
 async function getRates() {
   const now = Date.now();
+
   if (cachedRates && now - cachedAt < CACHE_TTL) {
     return cachedRates;
   }
@@ -409,7 +529,7 @@ async function getRates() {
   }
 }
 
-function buildProductRecord({ title, kzt, rates, sourceNode }) {
+function buildProductRecord(title, kzt, rates, sourceNode) {
   const productUrl = getProductUrl(sourceNode);
 
   return {
@@ -433,20 +553,15 @@ function setBoxData(box, product) {
   box.dataset.priceRub = String(product.prices.rub);
 }
 
-function renderPriceLines(box, product, options = {}) {
-  const showKzt = options.showKzt ?? true;
-  const showLabel = options.showLabel ?? true;
-  const kztLine = showKzt
-    ? `<div>₸ ${formatPrice(product.prices.kzt)}&nbsp;KZT</div>`
-    : "";
-  const label = showLabel
+function renderBoxContent(box, product, compact = false) {
+  const label = compact
     ? '<span class="td-converter-box__label">Для сравнения</span>'
-    : "";
-
+    : '<span class="td-converter-box__label">Для сравнения</span>';
+  box.dataset.renderVersion = BOX_RENDER_VERSION;
+  box.dataset.ownerId = INSTANCE_ID;
   box.innerHTML = `
     ${label}
     <div class="td-converter-box__prices">
-      ${kztLine}
       <div>💵 ${formatPrice(product.prices.usd)}&nbsp;USD</div>
       <div>₽ ${formatPrice(product.prices.rub)}&nbsp;RUB</div>
     </div>
@@ -455,33 +570,35 @@ function renderPriceLines(box, product, options = {}) {
   `;
 }
 
-function ensureBoxAfter(targetNode, className) {
+function upsertBoxAfter(targetNode, className, product, compact = false) {
+  cleanupUnexpectedConverterBoxes(document);
+
+  const adjacentBox = targetNode.nextElementSibling;
   const existingBox =
-    targetNode.nextElementSibling?.classList.contains("td-converter-box")
-      ? targetNode.nextElementSibling
+    adjacentBox?.classList.contains(BOX_CLASS)
+      ? adjacentBox
       : null;
 
-  const box = existingBox || document.createElement("div");
-  box.className = `td-converter-box ${className}`.trim();
+  if (existingBox && !isExpectedConverterBox(existingBox)) {
+    existingBox.remove();
+  }
+
+  const box =
+    existingBox && isExpectedConverterBox(existingBox)
+      ? existingBox
+      : document.createElement("div");
+  box.className = `${BOX_CLASS} ${className}`.trim();
+  setBoxData(box, product);
+  renderBoxContent(box, product, compact);
 
   if (!box.isConnected) {
     targetNode.after(box);
   }
-
-  return box;
-}
-
-function buildAndRenderBox({ targetNode, className, product, showKzt, showLabel }) {
-  const box = ensureBoxAfter(targetNode, className);
-  setBoxData(box, product);
-  renderPriceLines(box, product, { showKzt, showLabel });
 }
 
 async function convertProductPagePrice() {
-  if (!converterEnabled) return;
-
-  const { priceEl, priceBlock } = getProductPageTarget();
-  if (!priceBlock || !priceEl) return;
+  const { priceEl, priceBlock, renderAnchor } = getProductPageTarget();
+  if (!priceBlock || !priceEl || !renderAnchor) return;
 
   const kzt = parseKztPrice(priceEl.textContent);
   if (!kzt) return;
@@ -490,28 +607,19 @@ async function convertProductPagePrice() {
   if (!rates) return;
 
   const conversionKey = `${kzt}|${cachedAt}`;
-  if (priceEl.dataset.lastConversionKey === conversionKey) return;
+  if (
+    priceEl.dataset.lastConversionKey === conversionKey &&
+    isExpectedConverterBox(renderAnchor.nextElementSibling)
+  ) {
+    return;
+  }
   priceEl.dataset.lastConversionKey = conversionKey;
 
-  const product = buildProductRecord({
-    title: getProductPageTitle(),
-    kzt,
-    rates,
-    sourceNode: priceBlock,
-  });
-
-  buildAndRenderBox({
-    targetNode: priceBlock,
-    className: "Typography__L Typography__L_Bold",
-    product,
-    showKzt: false,
-    showLabel: true,
-  });
+  const product = buildProductRecord(getProductPageTitle(), kzt, rates, priceBlock);
+  upsertBoxAfter(renderAnchor, "Typography__L Typography__L_Bold", product);
 }
 
-async function convertTechnodomCatalogPrices() {
-  if (!converterEnabled || !isTechnodom()) return;
-
+function getTechnodomCatalogPriceBlocks() {
   const priceBlocks = Array.from(
     document.querySelectorAll('p[data-testid="product-price"]')
   )
@@ -525,7 +633,10 @@ async function convertTechnodomCatalogPrices() {
   Array.from(document.querySelectorAll(ALTERNATIVE_CARD_CONTAINER_SELECTOR))
     .filter((block) => block.querySelector(ALTERNATIVE_CARD_PRICE_SELECTOR))
     .forEach((block) => {
-      if (!priceBlocks.includes(block)) {
+      if (
+        !priceBlocks.includes(block) &&
+        isInsideTechnodomCatalogCard(block)
+      ) {
         priceBlocks.push(block);
       }
     });
@@ -536,6 +647,13 @@ async function convertTechnodomCatalogPrices() {
       .forEach((block) => priceBlocks.push(block));
   }
 
+  return priceBlocks;
+}
+
+async function convertTechnodomCatalogPrices() {
+  if (!isTechnodom()) return;
+
+  const priceBlocks = getTechnodomCatalogPriceBlocks();
   if (!priceBlocks.length) return;
 
   const rates = await getRates();
@@ -546,30 +664,32 @@ async function convertTechnodomCatalogPrices() {
       block.querySelector('p[data-testid="product-price"]') ||
       block.querySelector(ALTERNATIVE_CARD_PRICE_SELECTOR) ||
       block.querySelector("p");
-
     if (!priceEl) return;
 
     const kzt = parseKztPrice(priceEl.textContent);
     if (!kzt) return;
 
     const conversionKey = `${kzt}|${cachedAt}`;
-    if (block.dataset.convertedKey === conversionKey) return;
+    if (
+      block.dataset.convertedKey === conversionKey &&
+      isExpectedConverterBox(block.nextElementSibling)
+    ) {
+      return;
+    }
     block.dataset.convertedKey = conversionKey;
 
-    const product = buildProductRecord({
-      title: getCatalogProductTitle(block),
+    const product = buildProductRecord(
+      getCatalogProductTitle(block),
       kzt,
       rates,
-      sourceNode: block,
-    });
-
-    buildAndRenderBox({
-      targetNode: block,
-      className: "Typography__XS Typography__XS_Regular td-converter-box--compact",
+      block
+    );
+    upsertBoxAfter(
+      block,
+      "Typography__XS Typography__XS_Regular td-converter-box--compact",
       product,
-      showKzt: false,
-      showLabel: true,
-    });
+      true
+    );
   });
 }
 
@@ -588,7 +708,7 @@ function setSaveStatus(box, message, saved = false) {
 }
 
 async function handleSaveButtonClick(button) {
-  const box = button.closest(".td-converter-box");
+  const box = button.closest(`.${BOX_CLASS}`);
   if (!box) return;
 
   const title = sanitizeText(box.dataset.productTitle);
@@ -619,21 +739,11 @@ async function handleSaveButtonClick(button) {
   }
 }
 
-function installClickHandler() {
-  document.addEventListener("click", (event) => {
-    const button = event.target.closest(".td-save-product-button");
-    if (!button) return;
-
-    event.preventDefault();
-    handleSaveButtonClick(button);
-  });
-}
-
 function scheduleConversion() {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     if (!converterEnabled) {
-      removeConvertedPrices();
+      cleanupConvertedPrices();
       return;
     }
 
@@ -644,13 +754,36 @@ function scheduleConversion() {
 
 function mutationContainsPriceNode(mutation) {
   if (mutation.type === "characterData") {
-    return mutation.target?.parentElement?.matches?.(PRICE_NODE_SELECTOR) ?? false;
+    const parent = mutation.target?.parentElement;
+    if (parent?.closest?.(ANY_BOX_SELECTOR)) return false;
+    return parent?.matches?.(PRICE_NODE_SELECTOR) ?? false;
   }
 
   if (!mutation.addedNodes?.length) return false;
 
   return Array.from(mutation.addedNodes).some((node) => {
     if (!(node instanceof Element)) return false;
+
+    if (node.classList.contains(BOX_CLASS) || node.classList.contains(LEGACY_BOX_CLASS)) {
+      if (!isExpectedConverterBox(node)) {
+        node.remove();
+      }
+      return false;
+    }
+
+    const nestedBoxes = node.querySelectorAll?.(ANY_BOX_SELECTOR);
+    if (nestedBoxes?.length) {
+      nestedBoxes.forEach((box) => {
+        if (!isExpectedConverterBox(box)) {
+          box.remove();
+        }
+      });
+    }
+
+    if (node.closest(ANY_BOX_SELECTOR)) {
+      return false;
+    }
+
     return (
       node.matches(PRICE_NODE_SELECTOR) ||
       Boolean(node.querySelector(PRICE_NODE_SELECTOR))
@@ -661,6 +794,26 @@ function mutationContainsPriceNode(mutation) {
 function clearNavigationBurst() {
   navigationBurstTimerIds.forEach((timerId) => clearTimeout(timerId));
   navigationBurstTimerIds = [];
+}
+
+function clearTechnodomProductPageLateRender() {
+  clearTimeout(technodomProductPageLateRenderTimer);
+  technodomProductPageLateRenderTimer = null;
+}
+
+function isTechnodomProductPage() {
+  const { priceEl } = getTechnodomProductPageTarget();
+  return Boolean(priceEl);
+}
+
+function scheduleTechnodomProductPageLateRender() {
+  if (!converterEnabled || !isTechnodom() || !isTechnodomProductPage()) return;
+
+  clearTechnodomProductPageLateRender();
+  technodomProductPageLateRenderTimer = setTimeout(() => {
+    if (!converterEnabled) return;
+    convertProductPagePrice();
+  }, TECHNODOM_PRODUCT_PAGE_LATE_RENDER_MS);
 }
 
 function scheduleNavigationBurst() {
@@ -674,6 +827,8 @@ function scheduleNavigationBurst() {
       scheduleConversion();
     }, delay)
   );
+
+  scheduleTechnodomProductPageLateRender();
 }
 
 function handleUrlChange() {
@@ -714,12 +869,9 @@ function ensureObserver() {
     observer = new MutationObserver((mutations) => {
       handleUrlChange();
 
-      const hasRelevantMutation = mutations.some((mutation) => {
-        if (mutationContainsPriceNode(mutation)) return true;
-        return mutation.type === "childList" || mutation.type === "characterData";
-      });
-
+      const hasRelevantMutation = mutations.some(mutationContainsPriceNode);
       if (!hasRelevantMutation) return;
+
       scheduleConversion();
     });
   } else {
@@ -744,20 +896,35 @@ function installNavigationHooks() {
   }
 }
 
+function installClickHandler() {
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest(".td-save-product-button");
+    if (!button) return;
+
+    event.preventDefault();
+    handleSaveButtonClick(button);
+  });
+}
+
 function setConverterEnabled(nextEnabled) {
   converterEnabled = Boolean(nextEnabled);
+  syncConverterVisibility();
 
   if (!converterEnabled) {
     clearTimeout(debounceTimer);
     clearTimeout(reattachObserverTimer);
     clearNavigationBurst();
+    clearTechnodomProductPageLateRender();
     observer?.disconnect();
     observedRoot = null;
-    removeConvertedPrices();
+    cleanupConvertedPrices();
     return;
   }
 
   ensureObserver();
+  cleanupConvertedPrices();
+  cleanupUnexpectedConverterBoxes(document);
+  scheduleConversion();
   scheduleNavigationBurst();
 }
 
@@ -770,6 +937,7 @@ function installExtensionHooks() {
     }
 
     if (message?.type === "TD_CONVERTER_REFRESH") {
+      cleanupConvertedPrices();
       scheduleConversion();
       sendResponse({ ok: true });
       return true;
@@ -785,6 +953,9 @@ function installExtensionHooks() {
 }
 
 function init() {
+  ensureConverterVisibilityStyle();
+  syncConverterVisibility();
+  cleanupUnexpectedConverterBoxes(document);
   ensureObserver();
   installNavigationHooks();
   installExtensionHooks();

@@ -1,4 +1,5 @@
-.td-converter-box {
+.td-converter-box,
+.td-converter-box-v2 {
   margin: 8px 0;
   padding: 10px 12px;
   background: linear-gradient(180deg, #fff7ed 0%, #ffffff 100%);

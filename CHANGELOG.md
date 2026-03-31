@@ -39,6 +39,7 @@ All notable changes to this project are documented in this file.
 - Fixed KZT parsing for stores that show decimal-formatted prices such as `628 253,00`, preventing inflated saved values on `itmag.kz`.
 - Enabled smart matching to actively choose the closest previously saved product as the popup comparison base instead of only storing matching metadata for future use.
 - Stopped Technodom comparison blocks from briefly reappearing after disabling conversion in popup by cancelling pending timers and disconnecting DOM observation immediately.
+- Eliminated Technodom product-page flicker for the newer comparison block by isolating the current injected UI on a separate `td-converter-box-v2` class and treating legacy `.td-converter-box` nodes as stale blocks to hide and remove.
 
 ## [1.0.3] - 2026-03-19
 

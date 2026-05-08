@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Technodom Price Converter",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Добавляет конвертацию цен и список сравнения для technodom.kz, shop.kz, sulpak.kz, ispace.kz и itmag.kz.",
   "permissions": ["storage", "activeTab"],
   "host_permissions": [

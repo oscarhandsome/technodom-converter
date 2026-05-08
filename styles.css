@@ -54,9 +54,12 @@
 }
 
 .td-converter-box__status {
-  min-height: 16px;
-  margin: 8px 0 0;
+  margin: 4px 0 0;
   font-size: 12px;
   line-height: 1.35;
   color: #7c2d12;
+}
+
+.td-converter-box__status:empty {
+  display: none;
 }

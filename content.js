@@ -897,12 +897,25 @@ function installNavigationHooks() {
 }
 
 function installClickHandler() {
-  document.addEventListener("click", (event) => {
+  const interceptButtonEvent = (event, shouldSave = false) => {
     const button = event.target.closest(".td-save-product-button");
     if (!button) return;
 
     event.preventDefault();
-    handleSaveButtonClick(button);
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    if (shouldSave) {
+      handleSaveButtonClick(button);
+    }
+  };
+
+  ["pointerdown", "mousedown", "mouseup", "click"].forEach((eventName) => {
+    document.addEventListener(
+      eventName,
+      (event) => interceptButtonEvent(event, eventName === "click"),
+      true
+    );
   });
 }
 

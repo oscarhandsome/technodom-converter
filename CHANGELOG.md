@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.5] - 2026-05-08
+
+### Fixed
+
+- Prevented product-card navigation when clicking the `Добавить в сравнение` button by intercepting pointer and click events before they bubble into the host page handlers.
+- Reduced extra empty space below the save button by hiding the status line when it has no message and tightening the status margin when text is shown.
+
 ## [1.0.4] - 2026-03-21
 
 ### Added

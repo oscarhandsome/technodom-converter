@@ -24,7 +24,7 @@ const INSTANCE_ID = `td-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 const SAVED_PRODUCTS_KEY = "savedProducts";
 const PRODUCT_CARD_CLASS_HINT = '[class*="ProductCard"]';
 const TECHNODOM_CATALOG_CARD_SELECTOR =
-  ".products__item, article.product, .category-product, .product-list__item";
+  '.products__item, article.product, .category-product, .product-list__item, [data-testid="category-page-list-item"], [data-testid="product-card"], [class*="ProductList_item"]';
 const ALTERNATIVE_CARD_CONTAINER_SELECTOR = ".product__price-container";
 const ALTERNATIVE_CARD_PRICE_SELECTOR = ".product__current-price";
 const TECHNODOM_HOST_RE = /(^|\.)technodom\.kz$/i;
@@ -44,10 +44,15 @@ const PRICE_NODE_SELECTOR = [
   ".price",
 ].join(", ");
 const TECHNODOM_PRODUCT_TITLE_SELECTORS = [
+  'meta[property="og:title"]',
   'h1[data-testid="product-title"]',
+  ".ProductHeader h1",
+  "[data-testid='product-header'] h1",
+  "[class*='ProductHeader'] h1",
+  "[class*='PdpHeader'] h1",
+  "[class*='ProductPage'] h1",
   'h1[class*="Typography"]',
   ".product__title",
-  'meta[property="og:title"]',
 ];
 const TECHNODOM_CARD_TITLE_SELECTORS = [
   '[data-testid="product-title"]',
@@ -171,6 +176,10 @@ function sanitizeText(text) {
   return (text || "").replace(/\s+/g, " ").trim();
 }
 
+function cleanTechnodomTitle(text) {
+  return sanitizeText(String(text || "").replace(/\s*\|\s*Technodom.*$/i, ""));
+}
+
 function normalizeTitle(title) {
   return sanitizeText(title).toLocaleLowerCase("ru-RU");
 }
@@ -262,6 +271,31 @@ function getTextFromSelectors(root, selectors) {
   return "";
 }
 
+function isGenericTechnodomTitle(title) {
+  const normalized = normalizeTitle(title);
+  return !normalized || normalized === "поиск" || normalized === "search";
+}
+
+function getTechnodomProductTitle() {
+  for (const selector of TECHNODOM_PRODUCT_TITLE_SELECTORS) {
+    const node = document.querySelector(selector);
+    if (!node) continue;
+
+    const rawValue =
+      node.tagName === "META"
+        ? node.getAttribute("content")
+        : node.textContent || node.getAttribute("title");
+    const title = cleanTechnodomTitle(rawValue);
+    if (isGenericTechnodomTitle(title)) continue;
+    return title;
+  }
+
+  const fallbackTitle = cleanTechnodomTitle(document.title);
+  return isGenericTechnodomTitle(fallbackTitle)
+    ? "Товар без названия"
+    : fallbackTitle;
+}
+
 function cleanupConvertedPrices() {
   document.querySelectorAll(ANY_BOX_SELECTOR).forEach((node) => node.remove());
   document
@@ -295,6 +329,11 @@ function cleanupUnexpectedConverterBoxes(scope = document) {
 
 function findCardContainer(node) {
   return (
+    node.closest('[data-testid="product-card"]') ||
+    node.closest('[data-testid="category-page-list-item"]') ||
+    node.closest(".ProductItem_itemLink__cud7j") ||
+    node.closest('[class*="ProductItem_itemLink"]') ||
+    node.closest('[class*="ProductCardV_card"]') ||
     node.closest(TECHNODOM_CATALOG_CARD_SELECTOR) ||
     node.closest('[class*="ProductCard"]') ||
     node.closest("article") ||
@@ -461,8 +500,7 @@ function getProductPageTitle() {
   }
 
   return (
-    getTextFromSelectors(document, TECHNODOM_PRODUCT_TITLE_SELECTORS) ||
-    sanitizeText(document.title.replace(/\s*\|\s*Technodom.*$/i, "")) ||
+    getTechnodomProductTitle() ||
     "Товар без названия"
   );
 }
@@ -596,6 +634,15 @@ function upsertBoxAfter(targetNode, className, product, compact = false) {
   }
 }
 
+function hasMatchingProductTitle(box, expectedTitle) {
+  if (!box) return false;
+
+  const currentTitle = sanitizeText(box.dataset.productTitle);
+  const nextTitle = sanitizeText(expectedTitle);
+
+  return currentTitle === nextTitle;
+}
+
 async function convertProductPagePrice() {
   const { priceEl, priceBlock, renderAnchor } = getProductPageTarget();
   if (!priceBlock || !priceEl || !renderAnchor) return;
@@ -606,16 +653,18 @@ async function convertProductPagePrice() {
   const rates = await getRates();
   if (!rates) return;
 
+  const product = buildProductRecord(getProductPageTitle(), kzt, rates, priceBlock);
   const conversionKey = `${kzt}|${cachedAt}`;
+  const existingBox = renderAnchor.nextElementSibling;
   if (
     priceEl.dataset.lastConversionKey === conversionKey &&
-    isExpectedConverterBox(renderAnchor.nextElementSibling)
+    isExpectedConverterBox(existingBox) &&
+    hasMatchingProductTitle(existingBox, product.title)
   ) {
     return;
   }
   priceEl.dataset.lastConversionKey = conversionKey;
 
-  const product = buildProductRecord(getProductPageTitle(), kzt, rates, priceBlock);
   upsertBoxAfter(renderAnchor, "Typography__L Typography__L_Bold", product);
 }
 
@@ -669,21 +718,23 @@ async function convertTechnodomCatalogPrices() {
     const kzt = parseKztPrice(priceEl.textContent);
     if (!kzt) return;
 
-    const conversionKey = `${kzt}|${cachedAt}`;
-    if (
-      block.dataset.convertedKey === conversionKey &&
-      isExpectedConverterBox(block.nextElementSibling)
-    ) {
-      return;
-    }
-    block.dataset.convertedKey = conversionKey;
-
     const product = buildProductRecord(
       getCatalogProductTitle(block),
       kzt,
       rates,
       block
     );
+    const conversionKey = `${kzt}|${cachedAt}`;
+    const existingBox = block.nextElementSibling;
+    if (
+      block.dataset.convertedKey === conversionKey &&
+      isExpectedConverterBox(existingBox) &&
+      hasMatchingProductTitle(existingBox, product.title)
+    ) {
+      return;
+    }
+    block.dataset.convertedKey = conversionKey;
+
     upsertBoxAfter(
       block,
       "Typography__XS Typography__XS_Regular td-converter-box--compact",
@@ -707,12 +758,33 @@ function setSaveStatus(box, message, saved = false) {
   }
 }
 
+function getBoxSourceNode(box) {
+  return box.previousElementSibling || box.parentElement || document.body;
+}
+
+function resolveCurrentProductTitle(box) {
+  const sourceNode = getBoxSourceNode(box);
+  const card = findCardContainer(sourceNode);
+  const hasCatalogTitle = Boolean(card?.querySelector?.('[data-testid="product-title"]'));
+
+  if (isTechnodom() && (isInsideTechnodomCatalogCard(sourceNode) || hasCatalogTitle)) {
+    return getCatalogProductTitle(sourceNode);
+  }
+
+  return getProductPageTitle();
+}
+
+function resolveCurrentProductUrl(box) {
+  return getProductUrl(getBoxSourceNode(box));
+}
+
 async function handleSaveButtonClick(button) {
   const box = button.closest(`.${BOX_CLASS}`);
   if (!box) return;
 
-  const title = sanitizeText(box.dataset.productTitle);
-  const productUrl = box.dataset.productUrl || window.location.href;
+  const resolvedTitle = sanitizeText(resolveCurrentProductTitle(box));
+  const title = resolvedTitle || sanitizeText(box.dataset.productTitle);
+  const productUrl = resolveCurrentProductUrl(box) || box.dataset.productUrl || window.location.href;
   const kzt = Number(box.dataset.priceKzt);
   const usd = Number(box.dataset.priceUsd);
   const rub = Number(box.dataset.priceRub);
@@ -726,6 +798,10 @@ async function handleSaveButtonClick(button) {
   setSaveStatus(box, "Сохраняю...");
 
   try {
+    box.dataset.productTitle = title;
+    box.dataset.productUrl = productUrl;
+    box.dataset.productId = `${getStoreName()}:${productUrl}`;
+
     await saveProductForComparison({
       id: box.dataset.productId || `${getStoreName()}:${productUrl}`,
       title,

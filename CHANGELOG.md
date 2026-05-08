@@ -8,6 +8,8 @@ All notable changes to this project are documented in this file.
 
 - Prevented product-card navigation when clicking the `Добавить в сравнение` button by intercepting pointer and click events before they bubble into the host page handlers.
 - Reduced extra empty space below the save button by hiding the status line when it has no message and tightening the status margin when text is shown.
+- Recomputed the saved comparison title from the live DOM at click time instead of trusting stale button dataset values.
+- Fixed Technodom search-result title detection by resolving the real catalog card container before reading `data-testid="product-title"`.
 
 ## [1.0.4] - 2026-03-21
 

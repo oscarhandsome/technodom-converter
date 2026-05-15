@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.6] - 2026-05-15
+
+### Added
+
+- Added `Для сравнения` blocks to product listing cards on `shop.kz`, `sulpak.kz`, `ispace.kz`, and `itmag.kz`.
+- Added catalog-card title and product URL extraction for the new supported listing layouts so saved comparison items point to the exact product.
+
+### Fixed
+
+- Prevented supported listing cards from being mistaken for product pages when resolving the main product price.
+- Allowed Sulpak listing cards to grow after injecting the comparison block and stacked their price/info columns to avoid cramped half-width availability text.
+
 ## [1.0.5] - 2026-05-08
 
 ### Fixed

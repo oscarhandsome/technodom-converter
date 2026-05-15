@@ -25,6 +25,10 @@ const SAVED_PRODUCTS_KEY = "savedProducts";
 const PRODUCT_CARD_CLASS_HINT = '[class*="ProductCard"]';
 const TECHNODOM_CATALOG_CARD_SELECTOR =
   '.products__item, article.product, .category-product, .product-list__item, [data-testid="category-page-list-item"], [data-testid="product-card"], [class*="ProductList_item"]';
+const SHOP_CATALOG_CARD_SELECTOR = ".multisearch-page__product";
+const SULPAK_CATALOG_CARD_SELECTOR = ".product__item.product__item-js, .product__item";
+const ISPACE_CATALOG_CARD_SELECTOR = ".search-product";
+const ITMAG_CATALOG_CARD_SELECTOR = '.item[data-entity="item"]';
 const ALTERNATIVE_CARD_CONTAINER_SELECTOR = ".product__price-container";
 const ALTERNATIVE_CARD_PRICE_SELECTOR = ".product__current-price";
 const TECHNODOM_HOST_RE = /(^|\.)technodom\.kz$/i;
@@ -39,8 +43,11 @@ const PRICE_NODE_SELECTOR = [
   ".product__price-container",
   ".product__current-price",
   ".item_current_price",
+  ".item-block-price",
   ".product__price",
+  ".product__item-price",
   ".product-price_price-value",
+  ".search-product_price-value",
   ".price",
 ].join(", ");
 const TECHNODOM_PRODUCT_TITLE_SELECTORS = [
@@ -73,21 +80,42 @@ const SHOP_PRODUCT_PRICE_SELECTORS = [
   ".item_current_price",
   '[id$="_price"]',
 ];
+const SHOP_CARD_TITLE_SELECTORS = [
+  ".product-item-title a",
+  ".product-item-title",
+  "a[title]",
+];
 const SULPAK_PRODUCT_TITLE_SELECTORS = [
   "h1.title__xmedium",
   'meta[property="og:title"]',
 ];
 const SULPAK_PRODUCT_PRICE_SELECTORS = [".product__price"];
+const SULPAK_CARD_TITLE_SELECTORS = [
+  ".product__item-name a",
+  ".product__item-name",
+  "[data-name]",
+  "a[title]",
+];
 const ISPACE_PRODUCT_TITLE_SELECTORS = [
   "h1.product-page_name",
   'meta[property="og:title"]',
 ];
 const ISPACE_PRODUCT_PRICE_SELECTORS = [".product-price_price-value"];
+const ISPACE_CARD_TITLE_SELECTORS = [
+  ".entity-card_name[data-title]",
+  ".entity-card_name-text",
+  ".entity-card_name",
+  ".entity-card_image-wrapper[aria-label]",
+];
 const ITMAG_PRODUCT_TITLE_SELECTORS = [
   "h1.title_section",
   'meta[property="og:title"]',
 ];
 const ITMAG_PRODUCT_PRICE_SELECTORS = [".price", '[id$="_price"]'];
+const ITMAG_CARD_TITLE_SELECTORS = [
+  ".main__recommended-list-title",
+  "a[title]",
+];
 
 function ensureConverterVisibilityStyle() {
   const styleId = "td-converter-visibility-style";
@@ -263,7 +291,11 @@ function getTextFromSelectors(root, selectors) {
     const value =
       node.tagName === "META"
         ? node.getAttribute("content")
-        : node.textContent || node.getAttribute("title");
+        : node.textContent ||
+          node.getAttribute("title") ||
+          node.getAttribute("data-name") ||
+          node.getAttribute("data-title") ||
+          node.getAttribute("aria-label");
     const text = sanitizeText(value);
     if (text) return text;
   }
@@ -329,6 +361,10 @@ function cleanupUnexpectedConverterBoxes(scope = document) {
 
 function findCardContainer(node) {
   return (
+    node.closest(SHOP_CATALOG_CARD_SELECTOR) ||
+    node.closest(SULPAK_CATALOG_CARD_SELECTOR) ||
+    node.closest(ISPACE_CATALOG_CARD_SELECTOR) ||
+    node.closest(ITMAG_CATALOG_CARD_SELECTOR) ||
     node.closest('[data-testid="product-card"]') ||
     node.closest('[data-testid="category-page-list-item"]') ||
     node.closest(".ProductItem_itemLink__cud7j") ||
@@ -386,6 +422,22 @@ async function saveProductForComparison(product) {
 
 function isInsideTechnodomCatalogCard(node) {
   return Boolean(node?.closest?.(TECHNODOM_CATALOG_CARD_SELECTOR));
+}
+
+function isInsideSulpakCatalogCard(node) {
+  return Boolean(node?.closest?.(SULPAK_CATALOG_CARD_SELECTOR));
+}
+
+function isInsideShopCatalogCard(node) {
+  return Boolean(node?.closest?.(SHOP_CATALOG_CARD_SELECTOR));
+}
+
+function isInsideISpaceCatalogCard(node) {
+  return Boolean(node?.closest?.(ISPACE_CATALOG_CARD_SELECTOR));
+}
+
+function isInsideItmagCatalogCard(node) {
+  return Boolean(node?.closest?.(ITMAG_CATALOG_CARD_SELECTOR));
 }
 
 function getTechnodomProductPageTarget() {
@@ -458,11 +510,32 @@ function getSimpleProductPageTarget(selectors) {
   };
 }
 
+function getFilteredProductPageTarget(selectors, isInsideCatalogCard) {
+  const priceEl = selectors
+    .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+    .find((node) => !isInsideCatalogCard(node));
+  const priceBlock = priceEl?.parentElement || priceEl;
+
+  return {
+    priceEl,
+    priceBlock,
+    renderAnchor: priceBlock,
+  };
+}
+
 function getProductPageTarget() {
-  if (isShopKz()) return getSimpleProductPageTarget(SHOP_PRODUCT_PRICE_SELECTORS);
-  if (isSulpak()) return getSimpleProductPageTarget(SULPAK_PRODUCT_PRICE_SELECTORS);
-  if (isISpace()) return getSimpleProductPageTarget(ISPACE_PRODUCT_PRICE_SELECTORS);
-  if (isItmag()) return getSimpleProductPageTarget(ITMAG_PRODUCT_PRICE_SELECTORS);
+  if (isShopKz()) {
+    return getFilteredProductPageTarget(SHOP_PRODUCT_PRICE_SELECTORS, isInsideShopCatalogCard);
+  }
+  if (isSulpak()) {
+    return getFilteredProductPageTarget(SULPAK_PRODUCT_PRICE_SELECTORS, isInsideSulpakCatalogCard);
+  }
+  if (isISpace()) {
+    return getFilteredProductPageTarget(ISPACE_PRODUCT_PRICE_SELECTORS, isInsideISpaceCatalogCard);
+  }
+  if (isItmag()) {
+    return getFilteredProductPageTarget(ITMAG_PRODUCT_PRICE_SELECTORS, isInsideItmagCatalogCard);
+  }
   return getTechnodomProductPageTarget();
 }
 
@@ -505,9 +578,56 @@ function getProductPageTitle() {
   );
 }
 
+function isInsideSupportedCatalogCard(node) {
+  return (
+    isInsideTechnodomCatalogCard(node) ||
+    isInsideShopCatalogCard(node) ||
+    isInsideSulpakCatalogCard(node) ||
+    isInsideISpaceCatalogCard(node) ||
+    isInsideItmagCatalogCard(node)
+  );
+}
+
+function getJsonAttribute(node, attributeName) {
+  try {
+    return JSON.parse(node?.getAttribute?.(attributeName) || "{}");
+  } catch (_err) {
+    return {};
+  }
+}
+
 function getCatalogProductTitle(priceBlock) {
   const card = findCardContainer(priceBlock);
   if (!card) return "Товар без названия";
+
+  if (isShopKz()) {
+    const dataProductName = sanitizeText(getJsonAttribute(card, "data-product").name);
+    if (dataProductName) return dataProductName;
+
+    const shopTitle = getTextFromSelectors(card, SHOP_CARD_TITLE_SELECTORS);
+    if (shopTitle) return shopTitle;
+  }
+
+  if (isSulpak()) {
+    const dataName = sanitizeText(card.getAttribute("data-name"));
+    if (dataName) return dataName;
+
+    const sulpakTitle = getTextFromSelectors(card, SULPAK_CARD_TITLE_SELECTORS);
+    if (sulpakTitle) return sulpakTitle;
+  }
+
+  if (isISpace()) {
+    const ispaceTitle = getTextFromSelectors(card, ISPACE_CARD_TITLE_SELECTORS)
+      .replace(/^go to\s+/i, "");
+    if (sanitizeText(ispaceTitle)) return sanitizeText(ispaceTitle);
+  }
+
+  if (isItmag()) {
+    const itmagTitle = getTextFromSelectors(card, ITMAG_CARD_TITLE_SELECTORS)
+      .replace(/^картинка\s+/i, "")
+      .replace(/\s+магазин\s+itmag\.kz$/i, "");
+    if (sanitizeText(itmagTitle)) return sanitizeText(itmagTitle);
+  }
 
   const explicitTitle = getTextFromSelectors(card, TECHNODOM_CARD_TITLE_SELECTORS);
   if (explicitTitle) return explicitTitle;
@@ -521,10 +641,20 @@ function getCatalogProductTitle(priceBlock) {
 }
 
 function getProductUrl(sourceNode) {
-  if (!isTechnodom()) return window.location.href;
+  if (!isTechnodom() && !isInsideSupportedCatalogCard(sourceNode)) {
+    const canonicalHref = document.querySelector('link[rel="canonical"]')?.href;
+    return canonicalHref || window.location.href;
+  }
 
   const card = findCardContainer(sourceNode);
   const link =
+    card?.querySelector(".product-item-title a[href]") ||
+    card?.querySelector(".product__item-name a[href]") ||
+    card?.querySelector(".product__item-images[href]") ||
+    card?.querySelector(".entity-card_name[href]") ||
+    card?.querySelector(".entity-card_image-wrapper[href]") ||
+    card?.querySelector(".main__recommended-list-title[href]") ||
+    card?.querySelector(".icon a[href]") ||
     card?.querySelector("a[href]") ||
     document.querySelector('link[rel="canonical"]');
   const href = link?.getAttribute("href") || link?.href || window.location.href;
@@ -744,6 +874,122 @@ async function convertTechnodomCatalogPrices() {
   });
 }
 
+function getSulpakCatalogPriceBlocks() {
+  return Array.from(document.querySelectorAll(SULPAK_CATALOG_CARD_SELECTOR))
+    .map((card) => card.querySelector(".product__item-price"))
+    .filter(Boolean);
+}
+
+function getShopCatalogPriceBlocks() {
+  return Array.from(document.querySelectorAll(SHOP_CATALOG_CARD_SELECTOR))
+    .map(
+      (card) =>
+        card.querySelector(".item-block-price") ||
+        card.querySelector(".price-box .item-price")
+    )
+    .filter(Boolean);
+}
+
+function getISpaceCatalogPriceBlocks() {
+  return Array.from(document.querySelectorAll(ISPACE_CATALOG_CARD_SELECTOR))
+    .map(
+      (card) =>
+        card.querySelector(".search-product_price") ||
+        card.querySelector(".search-product_price-value")
+    )
+    .filter(Boolean);
+}
+
+function getItmagCatalogPriceBlocks() {
+  return Array.from(document.querySelectorAll(ITMAG_CATALOG_CARD_SELECTOR))
+    .map(
+      (card) =>
+        card.querySelector('[data-entity="price-block"]') ||
+        card.querySelector(".price")
+    )
+    .filter(Boolean);
+}
+
+function markCatalogCardExpanded(sourceNode) {
+  const card = findCardContainer(sourceNode);
+  if (card && isInsideSupportedCatalogCard(sourceNode)) {
+    card.classList.add("td-converter-card-expanded");
+  }
+}
+
+async function convertCatalogPriceBlocks(priceBlocks, className) {
+  if (!priceBlocks.length) return;
+
+  const rates = await getRates();
+  if (!rates) return;
+
+  priceBlocks.forEach((block) => {
+    const kzt = parseKztPrice(block.textContent);
+    if (!kzt) return;
+
+    const product = buildProductRecord(
+      getCatalogProductTitle(block),
+      kzt,
+      rates,
+      block
+    );
+    const conversionKey = `${kzt}|${cachedAt}`;
+    const existingBox = block.nextElementSibling;
+    if (
+      block.dataset.convertedKey === conversionKey &&
+      isExpectedConverterBox(existingBox) &&
+      hasMatchingProductTitle(existingBox, product.title)
+    ) {
+      return;
+    }
+    block.dataset.convertedKey = conversionKey;
+    markCatalogCardExpanded(block);
+
+    upsertBoxAfter(
+      block,
+      className,
+      product,
+      true
+    );
+  });
+}
+
+async function convertShopCatalogPrices() {
+  if (!isShopKz()) return;
+
+  await convertCatalogPriceBlocks(
+    getShopCatalogPriceBlocks(),
+    "td-converter-box--compact td-converter-box--shop-catalog"
+  );
+}
+
+async function convertSulpakCatalogPrices() {
+  if (!isSulpak()) return;
+
+  await convertCatalogPriceBlocks(
+    getSulpakCatalogPriceBlocks(),
+    "td-converter-box--compact td-converter-box--sulpak-catalog"
+  );
+}
+
+async function convertISpaceCatalogPrices() {
+  if (!isISpace()) return;
+
+  await convertCatalogPriceBlocks(
+    getISpaceCatalogPriceBlocks(),
+    "td-converter-box--compact td-converter-box--ispace-catalog"
+  );
+}
+
+async function convertItmagCatalogPrices() {
+  if (!isItmag()) return;
+
+  await convertCatalogPriceBlocks(
+    getItmagCatalogPriceBlocks(),
+    "td-converter-box--compact td-converter-box--itmag-catalog"
+  );
+}
+
 function setSaveStatus(box, message, saved = false) {
   const statusEl = box.querySelector(".td-converter-box__status");
   const button = box.querySelector(".td-save-product-button");
@@ -768,6 +1014,13 @@ function resolveCurrentProductTitle(box) {
   const hasCatalogTitle = Boolean(card?.querySelector?.('[data-testid="product-title"]'));
 
   if (isTechnodom() && (isInsideTechnodomCatalogCard(sourceNode) || hasCatalogTitle)) {
+    return getCatalogProductTitle(sourceNode);
+  }
+
+  if (
+    (isShopKz() || isSulpak() || isISpace() || isItmag()) &&
+    isInsideSupportedCatalogCard(sourceNode)
+  ) {
     return getCatalogProductTitle(sourceNode);
   }
 
@@ -825,6 +1078,10 @@ function scheduleConversion() {
 
     convertProductPagePrice();
     convertTechnodomCatalogPrices();
+    convertShopCatalogPrices();
+    convertSulpakCatalogPrices();
+    convertISpaceCatalogPrices();
+    convertItmagCatalogPrices();
   }, 300);
 }
 

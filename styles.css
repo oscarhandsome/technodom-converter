@@ -63,3 +63,20 @@
 .td-converter-box__status:empty {
   display: none;
 }
+
+.product__item.td-converter-card-expanded {
+  height: auto !important;
+  min-height: 600px;
+}
+
+.product__item.td-converter-card-expanded .product__item-columns {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  width: 100% !important;
+}
+
+.product__item.td-converter-card-expanded .product__item-column,
+.product__item.td-converter-card-expanded .product__item-column-40 {
+  width: 100% !important;
+}

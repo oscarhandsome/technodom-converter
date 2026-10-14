@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Technodom Price Converter",
-  "version": "1.0.5",
+  "version": "1.0.10",
   "description": "Добавляет конвертацию цен и список сравнения для популярных интернет-магазинов Казахстана.",
   "permissions": ["storage", "activeTab"],
   "host_permissions": [
@@ -15,7 +15,13 @@
     "*://ispace.kz/*",
     "*://www.ispace.kz/*",
     "*://itmag.kz/*",
-    "*://www.itmag.kz/*"
+    "*://www.itmag.kz/*",
+    "*://dns-shop.kz/*",
+    "*://www.dns-shop.kz/*",
+    "*://forcecom.kz/*",
+    "*://www.forcecom.kz/*",
+    "*://apltech.kz/*",
+    "*://www.apltech.kz/*"
   ],
   "action": {
     "default_popup": "popup.html",
@@ -33,7 +39,13 @@
         "*://ispace.kz/*",
         "*://www.ispace.kz/*",
         "*://itmag.kz/*",
-        "*://www.itmag.kz/*"
+        "*://www.itmag.kz/*",
+        "*://dns-shop.kz/*",
+        "*://www.dns-shop.kz/*",
+        "*://forcecom.kz/*",
+        "*://www.forcecom.kz/*",
+        "*://apltech.kz/*",
+        "*://www.apltech.kz/*"
       ],
       "js": ["content.js"],
       "css": ["styles.css"],

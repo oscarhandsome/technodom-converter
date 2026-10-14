@@ -9,6 +9,9 @@ const SHOP_HOST_RE = /(^|\.)shop\.kz$/i;
 const SULPAK_HOST_RE = /(^|\.)sulpak\.kz$/i;
 const ISPACE_HOST_RE = /(^|\.)ispace\.kz$/i;
 const ITMAG_HOST_RE = /(^|\.)itmag\.kz$/i;
+const DNS_HOST_RE = /(^|\.)dns-shop\.kz$/i;
+const FORCECOM_HOST_RE = /(^|\.)forcecom\.kz$/i;
+const APLTECH_HOST_RE = /(^|\.)apltech\.kz$/i;
 const SAVED_PRODUCTS_KEY = "savedProducts";
 const FETCH_TIMEOUT_MS = 7000;
 
@@ -76,6 +79,10 @@ function formatRate(value, digits = 4) {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
+}
+
+function invertRate(rate) {
+  return rate ? 1 / rate : 0;
 }
 
 async function getRates() {
@@ -164,7 +171,10 @@ function isSupportedTab(tab) {
       SHOP_HOST_RE.test(hostname) ||
       SULPAK_HOST_RE.test(hostname) ||
       ISPACE_HOST_RE.test(hostname) ||
-      ITMAG_HOST_RE.test(hostname)
+      ITMAG_HOST_RE.test(hostname) ||
+      DNS_HOST_RE.test(hostname) ||
+      FORCECOM_HOST_RE.test(hostname) ||
+      APLTECH_HOST_RE.test(hostname)
     );
   } catch (_err) {
     return false;
@@ -408,7 +418,7 @@ async function syncUi() {
   renderSavedProducts(savedProducts, rates);
 
   if (!supportedTab) {
-    setStatus("Откройте страницу technodom.kz, shop.kz, sulpak.kz, ispace.kz или itmag.kz.");
+    setStatus("Откройте страницу поддерживаемого интернет-магазина.");
     return;
   }
 
@@ -417,10 +427,10 @@ async function syncUi() {
     return;
   }
 
-  const rateInfo = `Курс: 1 KZT = ${formatRate(rates.USD, 5)} USD, ${formatRate(
-    rates.RUB,
-    5
-  )} RUB.`;
+  const rateInfo = `Курс: 1 USD = ${formatRate(
+    invertRate(rates.USD),
+    2
+  )} KZT, 1 RUB = ${formatRate(invertRate(rates.RUB), 2)} KZT.`;
 
   setStatus(
     enabled
@@ -434,20 +444,28 @@ enabledToggle.addEventListener("change", async () => {
   await setStoredEnabled(enabled);
 
   const activeTab = await getActiveTab();
+  let delivered = null;
   if (activeTab?.id && isSupportedTab(activeTab)) {
-    await sendMessageToTab(activeTab.id, {
+    delivered = await sendMessageToTab(activeTab.id, {
       type: "TD_CONVERTER_SET_ENABLED",
       enabled,
     });
   }
 
-  setStatus(enabled ? "Функции на странице включены." : "Функции на странице выключены.");
+  setStatus(
+    delivered === false
+      ? "Не удалось связаться со страницей. Попробуйте перезагрузить вкладку."
+      : enabled
+      ? "Функции на странице включены."
+      : "Функции на странице выключены."
+  );
+  await syncUi();
 });
 
 refreshButton.addEventListener("click", async () => {
   const activeTab = await getActiveTab();
   if (!activeTab?.id || !isSupportedTab(activeTab)) {
-    setStatus("Текущая вкладка не относится к technodom.kz или shop.kz.");
+    setStatus("Текущая вкладка не относится к поддерживаемым магазинам.");
     return;
   }
 
@@ -460,6 +478,7 @@ refreshButton.addEventListener("click", async () => {
       ? "Обновление отправлено на текущую вкладку."
       : "Не удалось связаться со страницей. Попробуйте перезагрузить вкладку."
   );
+  await syncUi();
 });
 
 clearSavedButton.addEventListener("click", async () => {

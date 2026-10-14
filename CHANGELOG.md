@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.10] - 2026-10-15
+
+### Fixed
+
+- Fixed promotional prices in the `shop.kz` listing: the converter now uses the current price instead of joining the crossed-out and discounted prices.
+- Updated catalog-listing selectors for the current `ispace.kz` and `itmag.kz` markup.
+- Made KZT price parsing resilient to cards that include an old price, a discounted price, or an instalment-payment amount.
+
+## [1.0.8] - 2026-08-24
+
+### Added
+
+- Added price conversion and `Для сравнения` support for `forcecom.kz` product pages plus tile and wide catalog listing cards.
+- Added popup support detection and store-aware saved comparison records for Forcecom.
+
+## [1.0.7] - 2026-06-01
+
+### Added
+
+- Added price conversion and `Для сравнения` support for `dns-shop.kz` product pages and catalog listing cards.
+- Added `dns-shop.kz` extension permissions, content-script matches, popup support detection, and store-aware saved comparison records.
+
 ## [1.0.6] - 2026-05-15
 
 ### Added

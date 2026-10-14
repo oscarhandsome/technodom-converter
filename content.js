@@ -27,8 +27,13 @@ const TECHNODOM_CATALOG_CARD_SELECTOR =
   '.products__item, article.product, .category-product, .product-list__item, [data-testid="category-page-list-item"], [data-testid="product-card"], [class*="ProductList_item"]';
 const SHOP_CATALOG_CARD_SELECTOR = ".multisearch-page__product";
 const SULPAK_CATALOG_CARD_SELECTOR = ".product__item.product__item-js, .product__item";
-const ISPACE_CATALOG_CARD_SELECTOR = ".search-product";
-const ITMAG_CATALOG_CARD_SELECTOR = '.item[data-entity="item"]';
+const ISPACE_CATALOG_CARD_SELECTOR = ".search-product, .carousel-product";
+const ITMAG_CATALOG_CARD_SELECTOR =
+  '.item[data-entity="item"], .catalog-block__info-inner';
+const DNS_CATALOG_CARD_SELECTOR = ".catalog-product";
+const FORCECOM_CATALOG_CARD_SELECTOR =
+  ".catalog-block__info-inner, .catalog-list__item, .catalog-list__info";
+const APLTECH_CATALOG_CARD_SELECTOR = ".product__info";
 const ALTERNATIVE_CARD_CONTAINER_SELECTOR = ".product__price-container";
 const ALTERNATIVE_CARD_PRICE_SELECTOR = ".product__current-price";
 const TECHNODOM_HOST_RE = /(^|\.)technodom\.kz$/i;
@@ -36,6 +41,9 @@ const SHOP_HOST_RE = /(^|\.)shop\.kz$/i;
 const SULPAK_HOST_RE = /(^|\.)sulpak\.kz$/i;
 const ISPACE_HOST_RE = /(^|\.)ispace\.kz$/i;
 const ITMAG_HOST_RE = /(^|\.)itmag\.kz$/i;
+const DNS_HOST_RE = /(^|\.)dns-shop\.kz$/i;
+const FORCECOM_HOST_RE = /(^|\.)forcecom\.kz$/i;
+const APLTECH_HOST_RE = /(^|\.)apltech\.kz$/i;
 const PRICE_NODE_SELECTOR = [
   'p[data-testid="product-price"]',
   ".ProductCardPrices_pricesInfo__b58jF",
@@ -48,6 +56,9 @@ const PRICE_NODE_SELECTOR = [
   ".product__item-price",
   ".product-price_price-value",
   ".search-product_price-value",
+  ".product-buy__price",
+  ".price__new-val",
+  ".app-price",
   ".price",
 ].join(", ");
 const TECHNODOM_PRODUCT_TITLE_SELECTORS = [
@@ -114,6 +125,56 @@ const ITMAG_PRODUCT_TITLE_SELECTORS = [
 const ITMAG_PRODUCT_PRICE_SELECTORS = [".price", '[id$="_price"]'];
 const ITMAG_CARD_TITLE_SELECTORS = [
   ".main__recommended-list-title",
+  ".catalog-block__info-title",
+  "a[title]",
+];
+const DNS_PRODUCT_TITLE_SELECTORS = [
+  "h1.product-card-top__title",
+  "h1.product-card__title",
+  "h1",
+  'meta[property="og:title"]',
+];
+const DNS_PRODUCT_PRICE_SELECTORS = [
+  ".product-buy:not(.catalog-product__buy) .product-buy__price",
+  ".product-buy__price",
+];
+const DNS_CARD_TITLE_SELECTORS = [
+  ".catalog-product__name a",
+  ".catalog-product__name",
+  ".catalog-product__title a",
+  ".catalog-product__title",
+  "a[title]",
+];
+const FORCECOM_PRODUCT_TITLE_SELECTORS = [
+  "h1",
+  'meta[property="og:title"]',
+];
+const FORCECOM_PRODUCT_PRICE_SELECTORS = [
+  ".catalog-detail__price .price__new-val",
+  ".catalog-detail__price meta[itemprop='price']",
+];
+const FORCECOM_CARD_TITLE_SELECTORS = [
+  ".catalog-block__info-title a",
+  ".catalog-block__info-title",
+  ".catalog-list__info-title a",
+  ".catalog-list__info-title",
+  ".js-popup-title",
+  "a.dark_link",
+  "a[itemprop='url']",
+  "a[title]",
+];
+const APLTECH_PRODUCT_TITLE_SELECTORS = [
+  "h1",
+  ".sp__title",
+  ".product__name",
+  'meta[property="og:title"]',
+];
+const APLTECH_PRODUCT_PRICE_SELECTORS = [
+  ".sp__cart-block .app-price",
+];
+const APLTECH_CARD_TITLE_SELECTORS = [
+  ".product__name",
+  ".product__title",
   "a[title]",
 ];
 
@@ -168,16 +229,46 @@ function isItmag() {
   return ITMAG_HOST_RE.test(window.location.hostname);
 }
 
+function isDnsShop() {
+  return DNS_HOST_RE.test(window.location.hostname);
+}
+
+function isForcecom() {
+  return FORCECOM_HOST_RE.test(window.location.hostname);
+}
+
+function isApltech() {
+  return APLTECH_HOST_RE.test(window.location.hostname);
+}
+
 function getStoreName() {
   if (isShopKz()) return "Shop.kz";
   if (isSulpak()) return "Sulpak";
   if (isISpace()) return "iSpace";
   if (isItmag()) return "ITMag";
+  if (isDnsShop()) return "DNS Shop";
+  if (isForcecom()) return "Forcecom";
+  if (isApltech()) return "AplTech";
   return "Technodom";
 }
 
 function parseKztPrice(priceText) {
-  const normalized = String(priceText || "")
+  const rawText = String(priceText || "");
+  // Promotional cards can contain both the crossed-out and current prices.
+  // Use the last explicitly labelled KZT amount (the current price in the
+  // supported storefront markup) instead of joining both figures together.
+  const labelledPrices = Array.from(
+    rawText.matchAll(
+      /(?:\d{1,3}(?:[\s\u00a0]\d{3})+|\d+)(?:[,.]\d{1,2})?\s*(?:₸|тг\.?|тенге)/gi
+    )
+  );
+  const nonInstallmentPrices = labelledPrices.filter((match) => {
+    const textAfterPrice = rawText.slice((match.index || 0) + match[0].length, (match.index || 0) + match[0].length + 24);
+    return !/^(?:\s*\/|\s*за\s+)\s*мес\.?/i.test(textAfterPrice);
+  });
+  const priceValue =
+    nonInstallmentPrices.at(-1)?.[0] || labelledPrices.at(-1)?.[0] || rawText;
+  const normalized = priceValue
     .replace(/\s+/g, "")
     .replace(/[^\d,.-]/g, "");
 
@@ -290,12 +381,13 @@ function getTextFromSelectors(root, selectors) {
 
     const value =
       node.tagName === "META"
-        ? node.getAttribute("content")
+        ? node.getAttribute("content") || node.getAttribute("href")
         : node.textContent ||
           node.getAttribute("title") ||
           node.getAttribute("data-name") ||
           node.getAttribute("data-title") ||
-          node.getAttribute("aria-label");
+          node.getAttribute("aria-label") ||
+          node.getAttribute("href");
     const text = sanitizeText(value);
     if (text) return text;
   }
@@ -365,6 +457,9 @@ function findCardContainer(node) {
     node.closest(SULPAK_CATALOG_CARD_SELECTOR) ||
     node.closest(ISPACE_CATALOG_CARD_SELECTOR) ||
     node.closest(ITMAG_CATALOG_CARD_SELECTOR) ||
+    node.closest(DNS_CATALOG_CARD_SELECTOR) ||
+    node.closest(FORCECOM_CATALOG_CARD_SELECTOR) ||
+    node.closest(APLTECH_CATALOG_CARD_SELECTOR) ||
     node.closest('[data-testid="product-card"]') ||
     node.closest('[data-testid="category-page-list-item"]') ||
     node.closest(".ProductItem_itemLink__cud7j") ||
@@ -438,6 +533,20 @@ function isInsideISpaceCatalogCard(node) {
 
 function isInsideItmagCatalogCard(node) {
   return Boolean(node?.closest?.(ITMAG_CATALOG_CARD_SELECTOR));
+}
+
+function isInsideDnsCatalogCard(node) {
+  return Boolean(node?.closest?.(".catalog-product__buy"));
+}
+
+function isInsideForcecomCatalogCard(node) {
+  return Boolean(
+    node?.closest?.(".catalog-block__info-inner, .catalog-list__info-bottom")
+  );
+}
+
+function isInsideApltechCatalogCard(node) {
+  return Boolean(node?.closest?.(APLTECH_CATALOG_CARD_SELECTOR));
 }
 
 function getTechnodomProductPageTarget() {
@@ -523,6 +632,25 @@ function getFilteredProductPageTarget(selectors, isInsideCatalogCard) {
   };
 }
 
+function getDnsProductPageTarget() {
+  const priceEl = DNS_PRODUCT_PRICE_SELECTORS
+    .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+    .find((node) => !isInsideDnsCatalogCard(node));
+  const priceBlock = priceEl?.closest(".product-buy") || priceEl?.parentElement || priceEl;
+
+  return {
+    priceEl,
+    priceBlock,
+    renderAnchor: priceBlock,
+  };
+}
+
+function getPriceText(priceNode) {
+  return priceNode?.matches?.("meta[itemprop='price']")
+    ? priceNode.getAttribute("content")
+    : priceNode?.textContent;
+}
+
 function getProductPageTarget() {
   if (isShopKz()) {
     return getFilteredProductPageTarget(SHOP_PRODUCT_PRICE_SELECTORS, isInsideShopCatalogCard);
@@ -535,6 +663,21 @@ function getProductPageTarget() {
   }
   if (isItmag()) {
     return getFilteredProductPageTarget(ITMAG_PRODUCT_PRICE_SELECTORS, isInsideItmagCatalogCard);
+  }
+  if (isDnsShop()) {
+    return getDnsProductPageTarget();
+  }
+  if (isForcecom()) {
+    return getFilteredProductPageTarget(
+      FORCECOM_PRODUCT_PRICE_SELECTORS,
+      isInsideForcecomCatalogCard
+    );
+  }
+  if (isApltech()) {
+    return getFilteredProductPageTarget(
+      APLTECH_PRODUCT_PRICE_SELECTORS,
+      isInsideApltechCatalogCard
+    );
   }
   return getTechnodomProductPageTarget();
 }
@@ -572,6 +715,30 @@ function getProductPageTitle() {
     );
   }
 
+  if (isDnsShop()) {
+    return (
+      getTextFromSelectors(document, DNS_PRODUCT_TITLE_SELECTORS) ||
+      sanitizeText(document.title.replace(/\s*\|.*$/, "")) ||
+      "Товар без названия"
+    );
+  }
+
+  if (isForcecom()) {
+    return (
+      getTextFromSelectors(document, FORCECOM_PRODUCT_TITLE_SELECTORS) ||
+      sanitizeText(document.title.replace(/\s*\|.*$/, "")) ||
+      "Товар без названия"
+    );
+  }
+
+  if (isApltech()) {
+    return (
+      getTextFromSelectors(document, APLTECH_PRODUCT_TITLE_SELECTORS) ||
+      sanitizeText(document.title.replace(/\s*\|.*$/, "")) ||
+      "Товар без названия"
+    );
+  }
+
   return (
     getTechnodomProductTitle() ||
     "Товар без названия"
@@ -584,7 +751,10 @@ function isInsideSupportedCatalogCard(node) {
     isInsideShopCatalogCard(node) ||
     isInsideSulpakCatalogCard(node) ||
     isInsideISpaceCatalogCard(node) ||
-    isInsideItmagCatalogCard(node)
+    isInsideItmagCatalogCard(node) ||
+    isInsideDnsCatalogCard(node) ||
+    isInsideForcecomCatalogCard(node) ||
+    isInsideApltechCatalogCard(node)
   );
 }
 
@@ -629,6 +799,21 @@ function getCatalogProductTitle(priceBlock) {
     if (sanitizeText(itmagTitle)) return sanitizeText(itmagTitle);
   }
 
+  if (isDnsShop()) {
+    const dnsTitle = getTextFromSelectors(card, DNS_CARD_TITLE_SELECTORS);
+    if (dnsTitle) return dnsTitle;
+  }
+
+  if (isForcecom()) {
+    const forcecomTitle = getTextFromSelectors(card, FORCECOM_CARD_TITLE_SELECTORS);
+    if (forcecomTitle) return forcecomTitle;
+  }
+
+  if (isApltech()) {
+    const apltechTitle = getTextFromSelectors(card, APLTECH_CARD_TITLE_SELECTORS);
+    if (apltechTitle) return apltechTitle;
+  }
+
   const explicitTitle = getTextFromSelectors(card, TECHNODOM_CARD_TITLE_SELECTORS);
   if (explicitTitle) return explicitTitle;
 
@@ -655,6 +840,14 @@ function getProductUrl(sourceNode) {
     card?.querySelector(".entity-card_image-wrapper[href]") ||
     card?.querySelector(".main__recommended-list-title[href]") ||
     card?.querySelector(".icon a[href]") ||
+    card?.querySelector(".catalog-product__name a[href]") ||
+    card?.querySelector(".catalog-product__title a[href]") ||
+    card?.querySelector(".catalog-block__info-title a[href]") ||
+    card?.querySelector(".catalog-list__info-title a[href]") ||
+    card?.querySelector(".js-popup-title[href]") ||
+    card?.querySelector("link[itemprop='url']") ||
+    card?.querySelector(".product__title a[href]") ||
+    card?.querySelector(".product__name a[href]") ||
     card?.querySelector("a[href]") ||
     document.querySelector('link[rel="canonical"]');
   const href = link?.getAttribute("href") || link?.href || window.location.href;
@@ -764,6 +957,30 @@ function upsertBoxAfter(targetNode, className, product, compact = false) {
   }
 }
 
+function upsertBoxInside(targetNode, className, product, compact = false) {
+  cleanupUnexpectedConverterBoxes(document);
+
+  const existingBox = Array.from(targetNode.children).find((child) =>
+    child.classList?.contains(BOX_CLASS)
+  );
+
+  if (existingBox && !isExpectedConverterBox(existingBox)) {
+    existingBox.remove();
+  }
+
+  const box =
+    existingBox && isExpectedConverterBox(existingBox)
+      ? existingBox
+      : document.createElement("div");
+  box.className = `${BOX_CLASS} ${className}`.trim();
+  setBoxData(box, product);
+  renderBoxContent(box, product, compact);
+
+  if (!box.isConnected) {
+    targetNode.append(box);
+  }
+}
+
 function hasMatchingProductTitle(box, expectedTitle) {
   if (!box) return false;
 
@@ -777,7 +994,7 @@ async function convertProductPagePrice() {
   const { priceEl, priceBlock, renderAnchor } = getProductPageTarget();
   if (!priceBlock || !priceEl || !renderAnchor) return;
 
-  const kzt = parseKztPrice(priceEl.textContent);
+  const kzt = parseKztPrice(getPriceText(priceEl));
   if (!kzt) return;
 
   const rates = await getRates();
@@ -895,7 +1112,8 @@ function getISpaceCatalogPriceBlocks() {
     .map(
       (card) =>
         card.querySelector(".search-product_price") ||
-        card.querySelector(".search-product_price-value")
+        card.querySelector(".search-product_price-value") ||
+        card.querySelector(".carousel-product_price-wrapper")
     )
     .filter(Boolean);
 }
@@ -905,9 +1123,29 @@ function getItmagCatalogPriceBlocks() {
     .map(
       (card) =>
         card.querySelector('[data-entity="price-block"]') ||
-        card.querySelector(".price")
+        card.querySelector(".price") ||
+        card.querySelector(".js-popup-price")
     )
     .filter(Boolean);
+}
+
+function getForcecomCatalogPriceBlocks() {
+  return Array.from(
+    document.querySelectorAll(
+      ".catalog-block__info-inner .js-popup-price, .catalog-list__info-bottom .js-popup-price"
+    )
+  ).filter((block) => block.querySelector(".price__new-val, meta[itemprop='price']"));
+}
+
+function getApltechCatalogPriceBlocks() {
+  return Array.from(
+    document.querySelectorAll(".product__info .product__price-container")
+  ).filter((block) => block.querySelector(".app-price"));
+}
+
+function getDnsCatalogPriceBlocks() {
+  return Array.from(document.querySelectorAll(".catalog-product__buy"))
+    .filter((block) => block.querySelector(".product-buy__price"));
 }
 
 function markCatalogCardExpanded(sourceNode) {
@@ -924,7 +1162,14 @@ async function convertCatalogPriceBlocks(priceBlocks, className) {
   if (!rates) return;
 
   priceBlocks.forEach((block) => {
-    const kzt = parseKztPrice(block.textContent);
+    const priceEl =
+      block.querySelector(".price__new-val") ||
+      block.querySelector(".item_current_price") ||
+      block.querySelector(".app-price") ||
+      block.querySelector(".carousel-product_price-value") ||
+      block.querySelector("meta[itemprop='price']") ||
+      block;
+    const kzt = parseKztPrice(getPriceText(priceEl));
     if (!kzt) return;
 
     const product = buildProductRecord(
@@ -990,6 +1235,68 @@ async function convertItmagCatalogPrices() {
   );
 }
 
+async function convertForcecomCatalogPrices() {
+  if (!isForcecom()) return;
+
+  await convertCatalogPriceBlocks(
+    getForcecomCatalogPriceBlocks(),
+    "td-converter-box--compact td-converter-box--forcecom-catalog"
+  );
+}
+
+async function convertApltechCatalogPrices() {
+  if (!isApltech()) return;
+
+  await convertCatalogPriceBlocks(
+    getApltechCatalogPriceBlocks(),
+    "td-converter-box--compact td-converter-box--apltech-catalog"
+  );
+}
+
+async function convertDnsCatalogPrices() {
+  if (!isDnsShop()) return;
+
+  const priceBlocks = getDnsCatalogPriceBlocks();
+  if (!priceBlocks.length) return;
+
+  const rates = await getRates();
+  if (!rates) return;
+
+  priceBlocks.forEach((block) => {
+    const priceEl = block.querySelector(".product-buy__price");
+    const kzt = parseKztPrice(priceEl?.textContent);
+    if (!kzt) return;
+
+    const product = buildProductRecord(
+      getCatalogProductTitle(block),
+      kzt,
+      rates,
+      block
+    );
+    const conversionKey = `${kzt}|${cachedAt}`;
+    const existingBox = Array.from(block.children).find((child) =>
+      child.classList?.contains(BOX_CLASS)
+    );
+    if (
+      block.dataset.convertedKey === conversionKey &&
+      isExpectedConverterBox(existingBox) &&
+      hasMatchingProductTitle(existingBox, product.title)
+    ) {
+      return;
+    }
+    block.dataset.convertedKey = conversionKey;
+    markCatalogCardExpanded(block);
+    block.classList.add("td-converter-dns-buy-expanded");
+
+    upsertBoxInside(
+      block,
+      "td-converter-box--compact td-converter-box--dns-catalog",
+      product,
+      true
+    );
+  });
+}
+
 function setSaveStatus(box, message, saved = false) {
   const statusEl = box.querySelector(".td-converter-box__status");
   const button = box.querySelector(".td-save-product-button");
@@ -1018,7 +1325,13 @@ function resolveCurrentProductTitle(box) {
   }
 
   if (
-    (isShopKz() || isSulpak() || isISpace() || isItmag()) &&
+    (isShopKz() ||
+      isSulpak() ||
+      isISpace() ||
+      isItmag() ||
+      isDnsShop() ||
+      isForcecom() ||
+      isApltech()) &&
     isInsideSupportedCatalogCard(sourceNode)
   ) {
     return getCatalogProductTitle(sourceNode);
@@ -1082,6 +1395,9 @@ function scheduleConversion() {
     convertSulpakCatalogPrices();
     convertISpaceCatalogPrices();
     convertItmagCatalogPrices();
+    convertDnsCatalogPrices();
+    convertForcecomCatalogPrices();
+    convertApltechCatalogPrices();
   }, 300);
 }
 

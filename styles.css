@@ -29,6 +29,8 @@
 .td-converter-box__prices {
   display: grid;
   gap: 2px;
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .td-save-product-button {
@@ -79,4 +81,19 @@
 .product__item.td-converter-card-expanded .product__item-column,
 .product__item.td-converter-card-expanded .product__item-column-40 {
   width: 100% !important;
+}
+
+.catalog-product__buy .td-converter-box--dns-catalog {
+  grid-column: 1 / -1;
+  justify-self: stretch;
+  width: 100%;
+}
+
+.catalog-products.view-tile .catalog-product__buy.td-converter-dns-buy-expanded {
+  flex-wrap: wrap !important;
+}
+
+.catalog-products.view-tile .catalog-product__buy .td-converter-box--dns-catalog {
+  flex: 0 0 100%;
+  width: 100%;
 }
